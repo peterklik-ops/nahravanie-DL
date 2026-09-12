@@ -4,6 +4,8 @@ Hlavný orchestrátor - spúšťa celý denný proces:
 1. Stiahne nové dodacie listy z Nitech, Eurovat, InterCars
 2. Nahrá ich do IC Office (sekcia Sklad)
 3. Načíta zákaznícku ponuku z InterCars a upraví predajné ceny v IC Office
+4. Porovná sklad IC Office (CSV export) s Allegro ponukami, upraví stav
+   kusov na Allegro a chýbajúci tovar zapíše do reportu (pozri stock_sync.py)
 
 Spúšťanie na serveri: naplánujte cez cron, napr. denne o 6:00:
     0 6 * * * cd /cesta/k/agent && /usr/bin/python3 main.py >> /var/log/agent.log 2>&1
@@ -18,6 +20,7 @@ import config
 import notifier
 import order_sync
 import price_check
+import stock_sync
 from portals import nitech, eurovat, intercars, ic_office
 from portals.base import new_context
 
@@ -150,6 +153,30 @@ def run_price_check_step(browser) -> None:
         context.close()
 
 
+def run_allegro_stock_sync_step() -> None:
+    """Porovná sklad IC Office (CSV export) s Allegro ponukami a upraví stav kusov."""
+    try:
+        summary = stock_sync.sync_stock_to_allegro()
+        if summary["updated"] or summary["ended"]:
+            details = "\n".join(
+                f"{c['sku']}: {c['old_quantity']} -> {c['new_quantity']} ks"
+                for c in summary["updated"]
+            )
+            notifier.send_alert(
+                f"Agent: Allegro sklad - upravených {len(summary['updated'])}, "
+                f"ukončených {len(summary['ended'])} ponúk",
+                details,
+            )
+    except FileNotFoundError as exc:
+        print(f"[UPOZORNENIE] Allegro sklad sync preskočený: {exc}")
+    except Exception:
+        print("[CHYBA] Zlyhala synchronizácia skladu s Allegro:")
+        traceback.print_exc()
+        notifier.send_alert(
+            "Agent: zlyhala synchronizácia skladu s Allegro", traceback.format_exc()
+        )
+
+
 def main() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=config.HEADLESS)
@@ -160,6 +187,8 @@ def main() -> None:
             run_price_check_step(browser)
         finally:
             browser.close()
+
+    run_allegro_stock_sync_step()
 
 
 if __name__ == "__main__":
