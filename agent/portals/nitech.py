@@ -30,9 +30,8 @@ def login(page: Page) -> None:
     page.get_by_role("button", name="Prihlásiť sa").click()
 
     # Výber zákazníckeho profilu/odberného miesta po prihlásení.
-    # TODO: #Customer_13383 je ID zaznamenané pri nahrávaní codegen pre
-    # konkrétny účet - overiť, či sa táto obrazovka zobrazuje vždy a či ID
-    # zostáva rovnaké (napr. pri viacerých odberných miestach na účte).
+    # #Customer_13383 je stabilné ID tohto účtu (potvrdené), obrazovka sa
+    # nemusí zobraziť vždy - preto je klik voliteľný.
     try:
         page.locator("#Customer_13383").click(timeout=5000)
     except PlaywrightTimeoutError:
