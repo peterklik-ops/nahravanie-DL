@@ -24,8 +24,10 @@ NITECH_DELIVERY_NOTES_URL = os.getenv(
 # --- Eurovat ---
 EUROVAT_USERNAME = os.getenv("EUROVAT_USERNAME")
 EUROVAT_PASSWORD = os.getenv("EUROVAT_PASSWORD")
-EUROVAT_LOGIN_URL = os.getenv("EUROVAT_LOGIN_URL")  # TODO: doplniť presnú URL prihlásenia
-EUROVAT_DELIVERY_NOTES_URL = os.getenv("EUROVAT_DELIVERY_NOTES_URL")  # TODO
+EUROVAT_LOGIN_URL = os.getenv("EUROVAT_LOGIN_URL", "https://www.eurovat.sk/sk/prihlasenie")
+# Poznámka: zoznam dodacích listov sa otvára cez odkaz "Dodacie listy" po
+# prihlásení (portals/eurovat.py), nie priamou navigáciou na URL.
+EUROVAT_DELIVERY_NOTES_URL = os.getenv("EUROVAT_DELIVERY_NOTES_URL")
 
 # --- InterCars ---
 INTERCARS_USERNAME = os.getenv("INTERCARS_USERNAME")
