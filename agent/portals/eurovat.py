@@ -45,7 +45,7 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
     stiahnuté (sledované v PROCESSED_DELIVERY_NOTES_FILE, aby sa pri
     opakovaných behoch nesťahovalo/nenahrávalo to isté).
     """
-    page.get_by_role("link", name="Dodacie listy").click()
+    page.goto(config.EUROVAT_DELIVERY_NOTES_URL)
 
     downloaded_files: list[Path] = []
     processed = load_processed_ids(PROCESSED_DELIVERY_NOTES_FILE)
@@ -74,6 +74,6 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
         mark_processed(PROCESSED_DELIVERY_NOTES_FILE, document_number)
         processed.add(document_number)
 
-        page.get_by_role("link", name="Dodacie listy").click()
+        page.goto(config.EUROVAT_DELIVERY_NOTES_URL)
 
     return downloaded_files
