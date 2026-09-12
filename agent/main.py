@@ -107,6 +107,12 @@ def run_subcustomer_order_sync_step(browser) -> None:
 
 def run_price_check_step(browser) -> None:
     """Skontroluje a upraví predajné ceny podľa InterCars ponuky."""
+    if not config.INTERCARS_LOGIN_URL:
+        # InterCars je zatiaľ vynechaný (Cloudflare ochrana na prihlásení,
+        # čaká sa na overenie API/EDI prístupu) - viď main.py PORTALS.
+        print("InterCars zatiaľ vynechaný - kontrola cien sa preskakuje.")
+        return
+
     context = new_context(browser, config.DOWNLOAD_DIR)
     ic_page = context.new_page()
     intercars_page = context.new_page()
