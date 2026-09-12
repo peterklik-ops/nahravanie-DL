@@ -24,7 +24,10 @@ from portals.base import new_context
 PORTALS = [
     ("Nitech", nitech),
     ("Eurovat", eurovat),
-    ("InterCars", intercars),
+    # InterCars zatiaľ vynechaný - portál má Cloudflare bot ochranu na
+    # prihlásení, treba najprv overiť, či existuje oficiálne API/EDI
+    # rozhranie pre partnerov, než sa doplní automatizácia cez prehliadač.
+    # ("InterCars", intercars),
 ]
 
 
