@@ -24,17 +24,45 @@ def login(page: Page) -> None:
     page.get_by_role("button", name="Prihlásiť").click()
 
 
-def upload_delivery_note(page: Page, file_path: Path) -> None:
+def upload_delivery_note(page: Page, file_path: Path, supplier_name: str) -> None:
     """
-    Prejde do sekcie Sklad a nahrá súbor dodacieho listu.
+    Prejde do sekcie Sklad -> Tovar -> Naskladniť z dodacieho listu,
+    vyberie dodávateľa (`supplier_name` presne podľa zoznamu "Výber
+    dodávateľa", napr. "EURO-VAT" alebo "Autoparts - Nitech"), nahrá CSV
+    súbor a potvrdí mapovanie stĺpcov.
+
+    STAV: toto je zatiaľ len prvá časť procesu (po potvrdenie mapovania
+    stĺpcov). Ďalej nasleduje:
+      - výber "umiestnenia" (zákazky) podľa čísla zákazky uvedeného na
+        dodacom liste (meno zákazníka je len doplnkové, rozhoduje číslo) -
+        EŠTE NEIMPLEMENTOVANÉ, čaká sa na ďalšiu codegen nahrávku.
+      - výnimky (zatiaľ zámerne bokom, vrátime sa k nim neskôr):
+        poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
+        "servis" namiesto na zákazku; záporná hodnota dodacieho listu
+        (vratka) -> tovar ide do skladu "vratka".
+      - výber skladu (napr. "medzisklad") a záverečné potvrdenie/uloženie.
     """
-    # TODO: doplniť navigáciu do sekcie Sklad + nahratie súboru, napr.:
-    # page.click('a:has-text("Sklad")')
-    # page.click('button:has-text("Nahrať dodací list")')
-    # page.set_input_files('input[type="file"]', str(file_path))
-    # page.click('button:has-text("Potvrdiť")')
-    # page.wait_for_load_state("networkidle")
-    raise NotImplementedError("Doplňte logiku nahrávania dodacieho listu do IC Office")
+    page.locator("a").filter(has_text="Sklady").first.click()
+    page.get_by_role("link", name="Tovar").click()
+    page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
+
+    page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa").click()
+    page.get_by_role("treeitem", name=supplier_name).click()
+    page.locator("#import_export_dl_modal").get_by_text("OK").click()
+
+    page.get_by_text("Vybrať súbor").click()
+    page.get_by_label("Vybrať súbor").set_input_files(str(file_path))
+    page.get_by_role("button", name="Ďalší").click()
+
+    # Mapovanie stĺpcov CSV - uložený preset, potvrdené ako stály (nemení sa).
+    page.locator("#columnSettings").select_option("21")
+    page.get_by_role("button", name="Ďalší").click()
+    page.get_by_role("button", name="OK").click()
+
+    raise NotImplementedError(
+        "Doplňte výber zákazky/umiestnenia podľa čísla zákazky na dodacom liste, "
+        "výber skladu a záverečné potvrdenie naskladnenia"
+    )
 
 
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:

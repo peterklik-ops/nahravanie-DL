@@ -31,6 +31,13 @@ PORTALS = [
     # ("InterCars", intercars),
 ]
 
+# Názov dodávateľa presne tak, ako sa zobrazuje v IC Office v poli
+# "Výber dodávateľa" pri naskladňovaní z dodacieho listu.
+SUPPLIER_NAMES = {
+    "Nitech": "Autoparts - Nitech",
+    "Eurovat": "EURO-VAT",
+}
+
 
 def run_delivery_notes_step(browser) -> list[tuple[str, "Path"]]:
     """Stiahne dodacie listy zo všetkých dodávateľských portálov."""
@@ -68,7 +75,8 @@ def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
         ic_office.login(page)
         for source_name, file_path in files:
             try:
-                ic_office.upload_delivery_note(page, file_path)
+                supplier_name = SUPPLIER_NAMES[source_name]
+                ic_office.upload_delivery_note(page, file_path, supplier_name)
                 print(f"Nahraté do IC Office: {file_path.name} (zdroj: {source_name})")
             except Exception:
                 print(f"[CHYBA] Zlyhalo nahratie {file_path.name}:")
