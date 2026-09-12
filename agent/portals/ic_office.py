@@ -62,14 +62,14 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
 
     page.get_by_role("link", name="+ Pridať zákazku").click()
 
-    # "* Zakázkový list č.:" zobrazuje automaticky pridelené číslo v tvare
-    # "rok/číslo" (napr. "2026/7202") - do "Názov zákazky" sa zapisuje len
-    # časť za lomítkom.
-    order_sheet_text = page.get_by_text("Zakázkový list č.").first.inner_text()
-    match = re.search(r"(\d+)\s*$", order_sheet_text)
+    # "* Zakázkový list č.:" je textové pole s automaticky predvyplnenou
+    # hodnotou v tvare "rok/číslo" (napr. "2026/7202") - do "Názov zákazky"
+    # sa zapisuje len časť za lomítkom.
+    order_sheet_value = page.get_by_role("textbox", name="* Zakázkový list č.:").input_value()
+    match = re.search(r"/(\d+)\s*$", order_sheet_value)
     if not match:
         raise ValueError(
-            f"Nepodarilo sa vyčítať číslo zo 'Zakázkový list č.' (text: {order_sheet_text!r})"
+            f"Nepodarilo sa vyčítať číslo z poľa 'Zakázkový list č.' (hodnota: {order_sheet_value!r})"
         )
     order_number = match.group(1)
 
