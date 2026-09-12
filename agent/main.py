@@ -16,6 +16,7 @@ from playwright.sync_api import sync_playwright
 
 import config
 import notifier
+import order_sync
 import price_check
 from portals import nitech, eurovat, intercars, ic_office
 from portals.base import new_context
@@ -80,6 +81,30 @@ def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
         context.close()
 
 
+def run_subcustomer_order_sync_step(browser) -> None:
+    """Vytvorí zákazky v IC Office pre nové objednávky podriadených zákazníkov v Nitechu."""
+    context = new_context(browser, config.DOWNLOAD_DIR)
+    nitech_page = context.new_page()
+    ic_page = context.new_page()
+    try:
+        nitech.login(nitech_page)
+        ic_office.login(ic_page)
+        created = order_sync.sync_subcustomer_orders(nitech_page, ic_page)
+        if created:
+            print(f"Vytvorených zákaziek pre podriadených zákazníkov: {len(created)}")
+        else:
+            print("Žiadne nové objednávky podriadených zákazníkov.")
+    except Exception:
+        print("[CHYBA] Zlyhala synchronizácia objednávok podriadených zákazníkov:")
+        traceback.print_exc()
+        notifier.send_alert(
+            "Agent: zlyhala synchronizácia objednávok podriadených zákazníkov",
+            traceback.format_exc(),
+        )
+    finally:
+        context.close()
+
+
 def run_price_check_step(browser) -> None:
     """Skontroluje a upraví predajné ceny podľa InterCars ponuky."""
     context = new_context(browser, config.DOWNLOAD_DIR)
@@ -117,6 +142,7 @@ def main() -> None:
         try:
             files = run_delivery_notes_step(browser)
             run_upload_step(browser, files)
+            run_subcustomer_order_sync_step(browser)
             run_price_check_step(browser)
         finally:
             browser.close()

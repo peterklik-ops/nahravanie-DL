@@ -20,6 +20,10 @@ NITECH_LOGIN_URL = os.getenv("NITECH_LOGIN_URL", "https://www.nitech.sk/sk/prihl
 NITECH_DELIVERY_NOTES_URL = os.getenv(
     "NITECH_DELIVERY_NOTES_URL", "https://www.nitech.sk/sk/informacia/dodacie-listy"
 )
+NITECH_SUBCUSTOMER_ORDERS_URL = os.getenv(
+    "NITECH_SUBCUSTOMER_ORDERS_URL",
+    "https://www.nitech.sk/sk/informacia/objednavky-podriadeny-zakaznik",
+)
 
 # --- Eurovat ---
 EUROVAT_USERNAME = os.getenv("EUROVAT_USERNAME")

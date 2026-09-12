@@ -34,6 +34,18 @@ def upload_delivery_note(page: Page, file_path: Path) -> None:
     raise NotImplementedError("Doplňte logiku nahrávania dodacieho listu do IC Office")
 
 
+def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
+    """
+    Vyhľadá zákazníka podľa mena, vytvorí zákazku, skopíruje pridelené
+    číslo do názvu zákazky, vyplní poznámku (číslo objednávky z Nitechu
+    a prípadná vlastná poznámka zákazníka) a nastaví stav "pracuje sa".
+    """
+    # TODO: doplniť podľa playwright codegen nahrávky - vyhľadanie
+    # zákazníka, vytvorenie zákazky, skopírovanie čísla do názvu,
+    # vyplnenie poznámky, nastavenie stavu "pracuje sa".
+    raise NotImplementedError("Doplňte vytvorenie zákazky pre podriadeného zákazníka v IC Office")
+
+
 def get_current_sale_price(page: Page, sku: str) -> float:
     """Vráti aktuálnu predajnú cenu produktu v IC Office podľa kódu (SKU)."""
     # TODO: doplniť vyhľadanie produktu a čítanie ceny

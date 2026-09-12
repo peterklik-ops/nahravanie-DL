@@ -69,3 +69,43 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
         page.goto(config.NITECH_DELIVERY_NOTES_URL)
 
     return downloaded_files
+
+
+# Poznámka v zozname má tvar "Podriadený zákazník: MENO (adresa) Doprava: ... Platba: ...",
+# prípadne s vlastnou poznámkou zákazníka pripojenou za "> " na konci.
+_SUBCUSTOMER_NAME_PATTERN = re.compile(r"Podriadený zákazník:\s*(?P<name>[^(]+?)\s*\(")
+_CUSTOM_NOTE_PATTERN = re.compile(r">\s*(?P<custom>.+)", re.DOTALL)
+
+
+def list_subcustomer_orders(page: Page) -> list[dict]:
+    """
+    Vráti zoznam objednávok podriadených zákazníkov (sekcia "objednávky
+    podriadených zákazníkov"): číslo objednávky, meno podriadeného
+    zákazníka a prípadná vlastná poznámka zákazníka (text za "> ").
+
+    Poznámka: niektoré riadky majú pred textom "Podriadený zákazník:"
+    ešte vlastný text bez oddeľovača ">" (napr. "11127823943 piatok
+    Podriadený zákazník: ...") - taký text sa zatiaľ nezachytáva,
+    custom_note bude v tom prípade None.
+    """
+    page.goto(config.NITECH_SUBCUSTOMER_ORDERS_URL)
+
+    orders: list[dict] = []
+    items = page.locator(".flex-orders-list .document-item")
+
+    for i in range(items.count()):
+        item = items.nth(i)
+        order_number = item.locator(".document-number a").inner_text().strip()
+        note_text = item.locator(".document-note span:not(.grey-foreground)").inner_text()
+
+        name_match = _SUBCUSTOMER_NAME_PATTERN.search(note_text)
+        custom_match = _CUSTOM_NOTE_PATTERN.search(note_text)
+
+        orders.append({
+            "order_number": order_number,
+            "subcustomer_name": name_match.group("name").strip() if name_match else None,
+            "custom_note": custom_match.group("custom").strip() if custom_match else None,
+            "raw_note": note_text.strip(),
+        })
+
+    return orders
