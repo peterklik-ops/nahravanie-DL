@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from playwright.sync_api import Page
 
-from . import config
+from . import config, notifier
 from .portals import nitech, ic_office
 
 PROCESSED_ORDERS_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_subcustomer_orders.json"
@@ -47,6 +47,8 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
     processed = _load_processed_order_numbers()
 
     created: list[dict] = []
+    failed: list[tuple[dict, Exception]] = []
+
     for order in orders:
         if order["order_number"] in processed:
             continue
@@ -55,13 +57,30 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
         if order["custom_note"]:
             note_parts.append(order["custom_note"])
 
-        ic_office.create_order_for_subcustomer(
-            ic_office_page,
-            customer_name=order["subcustomer_name"],
-            note=" ".join(note_parts),
-        )
+        try:
+            ic_office.create_order_for_subcustomer(
+                ic_office_page,
+                customer_name=order["subcustomer_name"],
+                note=" ".join(note_parts),
+            )
+        except Exception as exc:
+            # Jedna zlyhaná objednávka (napr. nezaregistrovaný podriadený
+            # zákazník) nesmie zablokovať spracovanie ostatných - skúsime
+            # ju znova pri ďalšom behu (nezaznamenávame ju ako spracovanú).
+            failed.append((order, exc))
+            continue
 
         _mark_order_processed(order["order_number"])
         created.append(order)
+
+    if failed:
+        summary = "\n".join(
+            f"{order['order_number']} ({order['subcustomer_name']}): {exc}"
+            for order, exc in failed
+        )
+        notifier.send_alert(
+            f"Agent: zlyhalo vytvorenie {len(failed)} zákaziek pre podriadených zákazníkov",
+            summary,
+        )
 
     return created

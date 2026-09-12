@@ -47,30 +47,40 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     search_box.fill(customer_name)
     search_box.press("Enter")
 
-    # Meno zákazníka pochádza z voľného textu poznámky v Nitechu a nemusí
-    # sa presne zhodovať s formátovaním v IC Office (napr. medzery,
-    # "s.r.o." vs "s. r. o."), preto nepoužívame presnú zhodu (exact=True)
-    # a berieme prvý výsledok vyhľadávania.
-    page.get_by_role("link", name=customer_name).first.click()
+    # Podriadení zákazníci sa v drvivej väčšine opakujú - musia byť vopred
+    # zaregistrovaní v Nitechu aj vytvorení ako klient v IC Office. Preto
+    # vyžadujeme presnú zhodu mena: ak sa nenájde, ide pravdepodobne o
+    # nezaregistrovaného/nového zákazníka a je bezpečnejšie to nahlásiť,
+    # než zákazku omylom priradiť k inému (podobne pomenovanému) klientovi.
+    customer_link = page.get_by_role("link", name=customer_name, exact=True)
+    if customer_link.count() == 0:
+        raise ValueError(
+            f"Zákazník '{customer_name}' sa v IC Office nenašiel presnou zhodou mena "
+            "- pravdepodobne nie je zaregistrovaný alebo sa meno nezhoduje s Nitechom."
+        )
+    customer_link.first.click()
 
     page.get_by_role("link", name="+ Pridať zákazku").click()
 
-    # Pole "Názov zákazky" má pri otvorení formulára už predvyplnené
-    # automaticky pridelené číslo zákazky - len ho potvrdíme (fill tou
-    # istou hodnotou), aby sa zachovalo presne také, aké systém pridelil.
-    name_field = page.get_by_role("textbox", name="* Názov zákazky:")
-    order_number = name_field.input_value().strip()
-    if order_number:
-        name_field.fill(order_number)
+    # "* Zakázkový list č.:" zobrazuje automaticky pridelené číslo v tvare
+    # "rok/číslo" (napr. "2026/7202") - do "Názov zákazky" sa zapisuje len
+    # časť za lomítkom.
+    order_sheet_text = page.get_by_text("Zakázkový list č.").first.inner_text()
+    match = re.search(r"(\d+)\s*$", order_sheet_text)
+    if not match:
+        raise ValueError(
+            f"Nepodarilo sa vyčítať číslo zo 'Zakázkový list č.' (text: {order_sheet_text!r})"
+        )
+    order_number = match.group(1)
 
+    page.get_by_role("textbox", name="* Názov zákazky:").fill(order_number)
     page.get_by_role("textbox", name="Popis zákazky:").fill(note)
     page.get_by_role("button", name="Pridať zákazku").click()
 
     # Otvorenie novovytvorenej zákazky - v zozname ju nájdeme podľa
     # prideleného čísla (zobrazuje sa v texte "2026/<číslo> - <číslo> -
     # Dátum: ...").
-    if order_number:
-        page.get_by_text(re.compile(re.escape(order_number))).first.click()
+    page.get_by_text(re.compile(re.escape(order_number))).first.click()
 
     # Nastavenie stavu "pracuje sa"
     page.get_by_text("Stav", exact=True).click()
