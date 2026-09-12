@@ -10,8 +10,8 @@ import re
 from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
-from .. import config
-from .base import wait_and_save_download
+import config
+from portals.base import wait_and_save_download
 
 
 def login(page: Page) -> None:

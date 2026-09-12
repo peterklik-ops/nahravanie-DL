@@ -16,8 +16,9 @@ import json
 from pathlib import Path
 from playwright.sync_api import Page
 
-from . import config, notifier
-from .portals import nitech, ic_office
+import config
+import notifier
+from portals import nitech, ic_office
 
 PROCESSED_ORDERS_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_subcustomer_orders.json"
 

@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from playwright.sync_api import Page
 
-from .. import config
+import config
 
 
 def login(page: Page) -> None:
