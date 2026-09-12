@@ -15,8 +15,10 @@ import config
 
 
 def login(page: Page) -> None:
+    # Priama URL prihlasovacieho formulára - odkaz "Prihlásiť" z domovskej
+    # stránky (ic-office.sk/) nebol spoľahlivý, občas viedol na stránku
+    # "Zabudnuté heslo" namiesto skutočného loginu.
     page.goto(config.IC_OFFICE_LOGIN_URL)
-    page.get_by_role("link", name="Prihlásiť").click()
     page.get_by_placeholder("Email").fill(config.IC_OFFICE_USERNAME)
     page.get_by_placeholder("Heslo").fill(config.IC_OFFICE_PASSWORD)
     page.get_by_role("button", name="Prihlásiť").click()
