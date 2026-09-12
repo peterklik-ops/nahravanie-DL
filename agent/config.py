@@ -57,6 +57,11 @@ IC_OFFICE_STOCK_FILE = os.getenv("IC_OFFICE_STOCK_FILE", "./downloads/sklad.xlsx
 IC_OFFICE_STOCK_SKU_COLUMN = os.getenv("IC_OFFICE_STOCK_SKU_COLUMN", "Kód")
 IC_OFFICE_STOCK_QUANTITY_COLUMN = os.getenv("IC_OFFICE_STOCK_QUANTITY_COLUMN", "Množstvo")
 IC_OFFICE_STOCK_NAME_COLUMN = os.getenv("IC_OFFICE_STOCK_NAME_COLUMN", "Názov")
+# Použité na zoradenie reportu chýbajúceho tovaru podľa hodnoty (najprv
+# najdrahšie položky - tie sa nahrávajú na Allegro manuálne s prioritou).
+IC_OFFICE_STOCK_PRICE_COLUMN = os.getenv(
+    "IC_OFFICE_STOCK_PRICE_COLUMN", "Odporúčaná predajná cena s DPH"
+)
 IC_OFFICE_STOCK_CSV_DELIMITER = os.getenv("IC_OFFICE_STOCK_CSV_DELIMITER", ";")
 IC_OFFICE_STOCK_CSV_ENCODING = os.getenv("IC_OFFICE_STOCK_CSV_ENCODING", "utf-8-sig")
 

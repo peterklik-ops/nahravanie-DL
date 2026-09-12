@@ -187,13 +187,16 @@ zhodnou s kódom v IC Office.
 
 ### Čo sync robí a čo nie
 
-- **Robí**: pri presnej zhode SKU upraví počet kusov (`stock.available`)
-  na Allegro podľa IC Office. Tovar na sklade bez zodpovedajúcej Allegro
-  ponuky zapíše do CSV reportu (`ALLEGRO_MISSING_ITEMS_REPORT`).
-- **Približné zhody** (Allegro `EXTERNAL_ID` má dopísanú poznámku za
-  medzerou, napr. `"1800402 bazos"` namiesto `"1800402"`) sa iba vypíšu
-  na manuálnu kontrolu - automaticky sa NEUPRAVUJÚ, aby sa predišlo
-  zmene nesprávnej ponuky pri chybnej zhode.
+- **Robí**: pri zhode SKU upraví počet kusov (`stock.available`) na
+  Allegro podľa IC Office. Tovar na sklade bez zodpovedajúcej Allegro
+  ponuky zapíše do CSV reportu (`ALLEGRO_MISSING_ITEMS_REPORT`), zoradený
+  podľa predajnej ceny zostupne (najdrahšie položky prvé - nahrávajú sa
+  na Allegro manuálne, s prioritou pre najdrahší tovar).
+- **Zhoda SKU** zahŕňa aj **približné zhody**: Allegro `EXTERNAL_ID` má
+  niekedy dopísanú poznámku za medzerou (napr. `"1800402 bazos"` namiesto
+  `"1800402"` v IC Office) - `normalize_sku` porovná aj prvé "slovo" pred
+  medzerou. Potvrdené na reálnom exporte (32 takýchto ponúk, počty kusov
+  sedeli až na jednu výnimku, ktorú sync správne opravil).
 - **Nerobí automaticky**: nevytvára nové Allegro ponuky pre chýbajúci
   tovar. Vytvorenie ponuky vyžaduje priradenie Allegro kategórie a jej
   povinných parametrov (značka, rozmer, OE číslo a pod. - líšia sa podľa
