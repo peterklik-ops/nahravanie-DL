@@ -21,6 +21,7 @@ na verejné/read-only endpointy). Preto sa používa Device Flow:
 """
 
 import base64
+import csv
 import json
 import time
 from pathlib import Path
@@ -156,6 +157,63 @@ def fetch_active_offers() -> dict[str, dict]:
         offset += limit
         if offset >= payload.get("count", payload.get("totalCount", len(page))) or not page:
             break
+
+    return offers
+
+
+def load_offers_from_csv(csv_path=None) -> dict[str, dict]:
+    """
+    Načíta export vlastných ponúk z Allegro (predajcovský panel -> Moje
+    ponuky -> export do CSV) a vráti ich v rovnakom tvare ako
+    `fetch_active_offers` - {sku: {"offer_id", "name", "available",
+    "status"}} - podľa stĺpca `config.ALLEGRO_OFFERS_CSV_EXTERNAL_ID_COLUMN`
+    (predvolene "EXTERNAL_ID", zodpovedá kódu produktu/SKU v IC Office).
+
+    Toto je alternatíva k `fetch_active_offers` (bez potreby OAuth
+    prístupu na čítanie) - na samotnú úpravu skladovej dostupnosti
+    (`update_offer_stock`) je OAuth prístup potrebný vždy, keďže sa jedná
+    o zápis do konkrétneho predajcovského účtu.
+
+    Ponuky bez vyplneného EXTERNAL_ID sa preskočia (nedajú sa spárovať
+    s IC Office kódom).
+    """
+    path = Path(csv_path or config.ALLEGRO_OFFERS_CSV)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Súbor s Allegro ponukami '{path}' neexistuje - stiahnite export "
+            "z predajcovského panelu (Moje ponuky -> export) a uložte ho na "
+            "túto cestu, alebo upravte ALLEGRO_OFFERS_CSV v .env."
+        )
+
+    offers: dict[str, dict] = {}
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        sku_column = config.ALLEGRO_OFFERS_CSV_EXTERNAL_ID_COLUMN
+        if sku_column not in (reader.fieldnames or []):
+            raise ValueError(
+                f"CSV '{path}' neobsahuje stĺpec '{sku_column}'. Nájdené "
+                f"stĺpce: {reader.fieldnames}."
+            )
+
+        for row in reader:
+            sku = (row.get(sku_column) or "").strip()
+            if not sku:
+                print(
+                    f"[UPOZORNENIE] Allegro ponuka {row.get('OFFER_ID')} "
+                    f"({row.get('NAME')}) nemá vyplnené {sku_column} - "
+                    "nedá sa spárovať podľa SKU, preskakujem."
+                )
+                continue
+            try:
+                available = int(float(row["STOCK"]))
+            except (KeyError, ValueError):
+                available = None
+            offers[sku] = {
+                "offer_id": row.get("OFFER_ID"),
+                "name": row.get("NAME"),
+                "available": available,
+                "status": row.get("STATUS"),
+            }
 
     return offers
 

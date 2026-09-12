@@ -1,6 +1,6 @@
 """
-Porovná skladové zásoby z IC Office (CSV export) s aktívnymi ponukami na
-Allegro a:
+Porovná skladové zásoby z IC Office (XLSX/CSV export) so zoznamom ponúk na
+Allegro (CSV export z predajcovského panelu, alebo živé REST API) a:
   1. upraví skladovú dostupnosť (počet kusov) na Allegro pri položkách,
      ktoré sa spárujú podľa kódu/SKU a majú iný počet kusov,
   2. voliteľne ukončí Allegro ponuky, ktoré sú v IC Office na 0 ks
@@ -10,9 +10,13 @@ Allegro a:
      Allegro ponuku podľa kódu/SKU, zapíše do CSV reportu
      (config.ALLEGRO_MISSING_ITEMS_REPORT) - automatické vytvorenie
      ponuky nie je implementované, pozri `allegro.create_offer`.
+  4. Allegro ponuky, ktorých EXTERNAL_ID sa nespároval presne, ale
+     zhoduje sa aspoň prvé "slovo" pred medzerou (Allegro EXTERNAL_ID
+     má často dopísanú poznámku, napr. "1800402 bazos"), sa NEUPRAVUJÚ
+     automaticky - iba sa vypíšu ako návrh na manuálnu kontrolu.
 
-Vstup: CSV export skladu z IC Office (Sklady -> Tovar -> export), cesta
-config.IC_OFFICE_STOCK_CSV. Stĺpce sa nastavujú cez config.IC_OFFICE_STOCK_*.
+Vstup: export skladu z IC Office (config.IC_OFFICE_STOCK_FILE, .xlsx alebo
+.csv) a export ponúk z Allegro (config.ALLEGRO_OFFERS_CSV).
 """
 
 import csv
@@ -27,48 +31,153 @@ import config
 SYNC_END_OUT_OF_STOCK_OFFERS = False
 
 
-def load_ic_office_stock(csv_path: str | Path = None) -> dict[str, dict]:
+def load_ic_office_stock(path: str | Path = None) -> dict[str, dict]:
     """
-    Načíta CSV export skladu z IC Office a vráti mapu
-    {sku: {"quantity": int, "name": str}}.
+    Načíta export skladu z IC Office (.xlsx alebo .csv, podľa prípony) a
+    vráti mapu {sku: {"quantity": int, "name": str}}.
     """
-    path = Path(csv_path or config.IC_OFFICE_STOCK_CSV)
-    if not path.exists():
+    file_path = Path(path or config.IC_OFFICE_STOCK_FILE)
+    if not file_path.exists():
         raise FileNotFoundError(
-            f"Súbor so skladom '{path}' neexistuje - stiahnite export z IC "
-            "Office (Sklady -> Tovar -> export) a uložte ho na túto cestu, "
-            "alebo upravte IC_OFFICE_STOCK_CSV v .env."
+            f"Súbor so skladom '{file_path}' neexistuje - stiahnite export z "
+            "IC Office (Sklady -> Tovar -> export) a uložte ho na túto "
+            "cestu, alebo upravte IC_OFFICE_STOCK_FILE v .env."
+        )
+
+    if file_path.suffix.lower() == ".xlsx":
+        rows = _read_xlsx_rows(file_path)
+    else:
+        rows = _read_csv_rows(file_path)
+
+    return _rows_to_stock(rows, str(file_path))
+
+
+def _read_xlsx_rows(path: Path) -> list[dict]:
+    import openpyxl
+
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    header = [str(h).strip() if h is not None else "" for h in next(rows_iter)]
+    return [dict(zip(header, row)) for row in rows_iter]
+
+
+def _read_csv_rows(path: Path) -> list[dict]:
+    with path.open(encoding=config.IC_OFFICE_STOCK_CSV_ENCODING, newline="") as f:
+        reader = csv.DictReader(f, delimiter=config.IC_OFFICE_STOCK_CSV_DELIMITER)
+        return list(reader)
+
+
+def _rows_to_stock(rows: list[dict], source_label: str) -> dict[str, dict]:
+    if not rows:
+        return {}
+
+    missing_columns = {
+        config.IC_OFFICE_STOCK_SKU_COLUMN,
+        config.IC_OFFICE_STOCK_QUANTITY_COLUMN,
+    } - set(rows[0].keys())
+    if missing_columns:
+        raise ValueError(
+            f"'{source_label}' neobsahuje očakávané stĺpce {missing_columns}. "
+            f"Nájdené stĺpce: {list(rows[0].keys())}. Upravte "
+            "IC_OFFICE_STOCK_SKU_COLUMN / IC_OFFICE_STOCK_QUANTITY_COLUMN "
+            "v .env podľa skutočného exportu."
         )
 
     stock: dict[str, dict] = {}
-    with path.open(encoding=config.IC_OFFICE_STOCK_CSV_ENCODING, newline="") as f:
-        reader = csv.DictReader(f, delimiter=config.IC_OFFICE_STOCK_CSV_DELIMITER)
-        missing_columns = {
-            config.IC_OFFICE_STOCK_SKU_COLUMN,
-            config.IC_OFFICE_STOCK_QUANTITY_COLUMN,
-        } - set(reader.fieldnames or [])
-        if missing_columns:
-            raise ValueError(
-                f"CSV '{path}' neobsahuje očakávané stĺpce {missing_columns}. "
-                f"Nájdené stĺpce: {reader.fieldnames}. Upravte "
-                "IC_OFFICE_STOCK_SKU_COLUMN / IC_OFFICE_STOCK_QUANTITY_COLUMN "
-                "v .env podľa skutočného exportu."
-            )
+    for row in rows:
+        sku = str(row.get(config.IC_OFFICE_STOCK_SKU_COLUMN) or "").strip()
+        if not sku:
+            continue
 
-        for row in reader:
-            sku = row[config.IC_OFFICE_STOCK_SKU_COLUMN].strip()
-            if not sku:
-                continue
-            quantity_raw = row[config.IC_OFFICE_STOCK_QUANTITY_COLUMN].strip().replace(",", ".")
-            try:
-                quantity = int(float(quantity_raw))
-            except ValueError:
-                print(f"[UPOZORNENIE] Neplatné množstvo '{quantity_raw}' pre SKU {sku}, preskakujem.")
-                continue
-            name = row.get(config.IC_OFFICE_STOCK_NAME_COLUMN, "").strip()
-            stock[sku] = {"quantity": quantity, "name": name}
+        quantity_raw = row.get(config.IC_OFFICE_STOCK_QUANTITY_COLUMN)
+        if quantity_raw is None or str(quantity_raw).strip() == "":
+            continue
+        try:
+            quantity = int(float(str(quantity_raw).strip().replace(",", ".")))
+        except ValueError:
+            print(f"[UPOZORNENIE] Neplatné množstvo '{quantity_raw}' pre SKU {sku}, preskakujem.")
+            continue
+
+        name = str(row.get(config.IC_OFFICE_STOCK_NAME_COLUMN) or "").strip()
+        stock[sku] = {"quantity": quantity, "name": name}
 
     return stock
+
+
+def normalize_sku(raw: str) -> str:
+    """
+    Vráti prvé "slovo" pred medzerou. Allegro EXTERNAL_ID má niekedy
+    dopísanú poznámku za medzerou (napr. "1800402 bazos" -> "1800402"),
+    ktorá sa v IC Office kóde nenachádza.
+    """
+    raw = raw.strip()
+    return raw.split()[0] if raw else raw
+
+
+def compute_diff(ic_office_stock: dict[str, dict], allegro_offers: dict[str, dict]) -> dict:
+    """
+    Čisto porovnávacia logika (bez sieťových volaní). Vráti:
+      - "updates": zoznam ponúk s presnou zhodou SKU a iným počtom kusov
+      - "unchanged": počet ponúk s presnou zhodou SKU a rovnakým počtom kusov
+      - "missing_in_allegro": tovar v IC Office (>0 ks) bez zodpovedajúcej
+        Allegro ponuky (ani presnej, ani približnej zhody)
+      - "fuzzy_matches": Allegro ponuky bez presnej zhody, ktoré sa zhodujú
+        aspoň podľa `normalize_sku` - na manuálnu kontrolu, NEUPRAVUJÚ sa
+    """
+    updates = []
+    unchanged = 0
+    fuzzy_matches = []
+    matched_ic_skus = set()
+
+    normalized_ic_index: dict[str, str] = {}
+    for ic_sku in ic_office_stock:
+        normalized_ic_index.setdefault(normalize_sku(ic_sku), ic_sku)
+
+    for sku, offer in allegro_offers.items():
+        if sku in ic_office_stock:
+            matched_ic_skus.add(sku)
+            ic_quantity = ic_office_stock[sku]["quantity"]
+            if offer["available"] == ic_quantity:
+                unchanged += 1
+            else:
+                updates.append(
+                    {
+                        "sku": sku,
+                        "offer_id": offer["offer_id"],
+                        "name": offer["name"],
+                        "old_quantity": offer["available"],
+                        "new_quantity": ic_quantity,
+                    }
+                )
+            continue
+
+        normalized = normalize_sku(sku)
+        ic_match = normalized_ic_index.get(normalized)
+        if ic_match:
+            matched_ic_skus.add(ic_match)
+            fuzzy_matches.append(
+                {
+                    "allegro_external_id": sku,
+                    "ic_office_kod": ic_match,
+                    "allegro_available": offer["available"],
+                    "ic_office_quantity": ic_office_stock[ic_match]["quantity"],
+                    "name": offer["name"],
+                }
+            )
+
+    missing_in_allegro = {
+        sku: item
+        for sku, item in ic_office_stock.items()
+        if sku not in matched_ic_skus and item["quantity"] > 0
+    }
+
+    return {
+        "updates": updates,
+        "unchanged": unchanged,
+        "missing_in_allegro": missing_in_allegro,
+        "fuzzy_matches": fuzzy_matches,
+    }
 
 
 def write_missing_items_report(missing: dict[str, dict], path: str | Path = None) -> None:
@@ -82,60 +191,74 @@ def write_missing_items_report(missing: dict[str, dict], path: str | Path = None
             writer.writerow([sku, item["name"], item["quantity"]])
 
 
-def sync_stock_to_allegro(csv_path: str | Path = None) -> dict:
+def sync_stock_to_allegro(
+    ic_office_path: str | Path = None,
+    allegro_offers: dict[str, dict] = None,
+    apply: bool = True,
+) -> dict:
     """
-    Spustí celý proces porovnania a úpravy. Vráti súhrn:
-        {"updated": [...], "ended": [...], "missing": {...}, "unchanged": int}
+    Spustí celé porovnanie a (ak `apply=True`) úpravu skladovej
+    dostupnosti na Allegro. Ak `allegro_offers` nie je zadané, načíta ich
+    cez `allegro.fetch_active_offers()` (živé REST API - vyžaduje OAuth
+    prístup). Pre porovnanie z CSV exportu použite
+    `allegro.load_offers_from_csv()` a výsledok odovzdajte v tomto
+    parametri (aktualizácia cez `apply=True` aj tak beží cez REST API,
+    keďže na zápis je OAuth vždy potrebný).
+
+    Vráti diff (pozri `compute_diff`) doplnený o skutočne vykonané zmeny
+    v "updates"/"ended" (ak `apply=False`, ide o navrhované zmeny).
     """
-    ic_office_stock = load_ic_office_stock(csv_path)
+    ic_office_stock = load_ic_office_stock(ic_office_path)
     print(f"Položiek v IC Office sklade: {len(ic_office_stock)}")
 
-    allegro_offers = allegro.fetch_active_offers()
+    if allegro_offers is None:
+        allegro_offers = allegro.fetch_active_offers()
     print(f"Aktívnych ponúk na Allegro: {len(allegro_offers)}")
 
-    updated = []
+    diff = compute_diff(ic_office_stock, allegro_offers)
+
     ended = []
-    unchanged = 0
-
-    for sku, offer in allegro_offers.items():
-        stock_item = ic_office_stock.get(sku)
-        ic_quantity = stock_item["quantity"] if stock_item else 0
-
-        if offer["available"] == ic_quantity:
-            unchanged += 1
+    applied_updates = []
+    for change in diff["updates"]:
+        if change["new_quantity"] == 0 and SYNC_END_OUT_OF_STOCK_OFFERS:
+            if apply:
+                allegro.end_offer(change["offer_id"])
+            ended.append(change)
+            print(f"[Allegro] {'Ukončená' if apply else 'NA UKONČENIE'} ponuka (0 ks): {change['sku']} - {change['name']}")
             continue
 
-        if ic_quantity == 0 and SYNC_END_OUT_OF_STOCK_OFFERS:
-            allegro.end_offer(offer["offer_id"])
-            ended.append({"sku": sku, "name": offer["name"]})
-            print(f"[Allegro] Ukončená ponuka (0 ks v IC Office): {sku} - {offer['name']}")
-            continue
+        if apply:
+            allegro.update_offer_stock(change["offer_id"], change["new_quantity"])
+        applied_updates.append(change)
+        prefix = "[Allegro]" if apply else "[NÁVRH]"
+        print(f"{prefix} {change['sku']}: {change['old_quantity']} -> {change['new_quantity']} ks")
 
-        allegro.update_offer_stock(offer["offer_id"], ic_quantity)
-        updated.append(
-            {
-                "sku": sku,
-                "name": offer["name"],
-                "old_quantity": offer["available"],
-                "new_quantity": ic_quantity,
-            }
-        )
-        print(f"[Allegro] {sku}: {offer['available']} -> {ic_quantity} ks")
+    if diff["fuzzy_matches"]:
+        print(f"\nPribližné zhody na manuálnu kontrolu ({len(diff['fuzzy_matches'])}):")
+        for fm in diff["fuzzy_matches"]:
+            print(
+                f"  Allegro '{fm['allegro_external_id']}' ~ IC Office "
+                f"'{fm['ic_office_kod']}' ({fm['name']}) - "
+                f"Allegro: {fm['allegro_available']} ks, IC Office: {fm['ic_office_quantity']} ks"
+            )
 
-    missing = {
-        sku: item for sku, item in ic_office_stock.items()
-        if sku not in allegro_offers and item["quantity"] > 0
-    }
+    missing = diff["missing_in_allegro"]
     if missing:
         write_missing_items_report(missing)
         print(
-            f"Tovar na sklade bez Allegro ponuky: {len(missing)} položiek - "
+            f"\nTovar na sklade bez Allegro ponuky: {len(missing)} položiek - "
             f"report uložený do {config.ALLEGRO_MISSING_ITEMS_REPORT}"
         )
     else:
-        print("Žiadny tovar na sklade bez zodpovedajúcej Allegro ponuky.")
+        print("\nŽiadny tovar na sklade bez zodpovedajúcej Allegro ponuky.")
 
-    return {"updated": updated, "ended": ended, "missing": missing, "unchanged": unchanged}
+    return {
+        "updated": applied_updates,
+        "ended": ended,
+        "missing": missing,
+        "fuzzy_matches": diff["fuzzy_matches"],
+        "unchanged": diff["unchanged"],
+    }
 
 
 if __name__ == "__main__":

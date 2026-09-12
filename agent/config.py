@@ -48,12 +48,14 @@ IC_OFFICE_LOGIN_URL = os.getenv("IC_OFFICE_LOGIN_URL", "https://ic-office.sk/web
 IC_OFFICE_USERNAME = os.getenv("IC_OFFICE_USERNAME")
 IC_OFFICE_PASSWORD = os.getenv("IC_OFFICE_PASSWORD")
 
-# CSV export skladových zásob z IC Office (Sklady -> Tovar -> export).
-# Stĺpce sa dajú premenovať cez *_COLUMN premenné nižšie, ak sa formát
-# exportu líši od predpokladaného.
-IC_OFFICE_STOCK_CSV = os.getenv("IC_OFFICE_STOCK_CSV", "./downloads/sklad.csv")
+# Export skladových zásob z IC Office (Sklady -> Tovar -> export) - podľa
+# skutočného exportu je to XLSX so stĺpcami "Kód" (SKU), "Množstvo"
+# (aktuálny počet kusov na sklade) a "Názov". CSV export je tiež podporovaný
+# (autodetekcia podľa prípony súboru). Stĺpce sa dajú premenovať cez
+# *_COLUMN premenné nižšie, ak sa formát exportu líši.
+IC_OFFICE_STOCK_FILE = os.getenv("IC_OFFICE_STOCK_FILE", "./downloads/sklad.xlsx")
 IC_OFFICE_STOCK_SKU_COLUMN = os.getenv("IC_OFFICE_STOCK_SKU_COLUMN", "Kód")
-IC_OFFICE_STOCK_QUANTITY_COLUMN = os.getenv("IC_OFFICE_STOCK_QUANTITY_COLUMN", "Sklad")
+IC_OFFICE_STOCK_QUANTITY_COLUMN = os.getenv("IC_OFFICE_STOCK_QUANTITY_COLUMN", "Množstvo")
 IC_OFFICE_STOCK_NAME_COLUMN = os.getenv("IC_OFFICE_STOCK_NAME_COLUMN", "Názov")
 IC_OFFICE_STOCK_CSV_DELIMITER = os.getenv("IC_OFFICE_STOCK_CSV_DELIMITER", ";")
 IC_OFFICE_STOCK_CSV_ENCODING = os.getenv("IC_OFFICE_STOCK_CSV_ENCODING", "utf-8-sig")
@@ -75,6 +77,16 @@ ALLEGRO_API_URL = os.getenv("ALLEGRO_API_URL", "https://api.allegro.pl")
 # Súbor, kam sa priebežne ukladá obnovený refresh token (access token
 # expiruje po ~12 hodinách, refresh token sa pri obnove typicky mení).
 ALLEGRO_TOKEN_STORE = os.getenv("ALLEGRO_TOKEN_STORE", "./allegro_token.json")
+
+# CSV export vlastných ponúk z Allegro (predajcovský panel -> Moje ponuky ->
+# export), stĺpce OFFER_ID,NAME,EXTERNAL_ID,STATUS,GTIN,STOCK,PRICE@...,
+# CURRENCY@...,URL. Používa sa ako zdroj zoznamu ponúk namiesto/popri
+# živom REST API - obsahuje aj OFFER_ID, takže sa dá spárovať a následne
+# cez API upraviť len konkrétna ponuka bez nutnosti listovať /sale/offers.
+ALLEGRO_OFFERS_CSV = os.getenv("ALLEGRO_OFFERS_CSV", "./downloads/allegro_export.csv")
+ALLEGRO_OFFERS_CSV_EXTERNAL_ID_COLUMN = os.getenv(
+    "ALLEGRO_OFFERS_CSV_EXTERNAL_ID_COLUMN", "EXTERNAL_ID"
+)
 
 # Kam uložiť report chýbajúceho tovaru (v sklade v IC Office, no bez
 # zodpovedajúcej ponuky na Allegro podľa kódu/SKU).

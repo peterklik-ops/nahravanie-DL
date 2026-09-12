@@ -123,47 +123,77 @@ stabilne na variante A alebo B.
 
 ## Sklad -> Allegro
 
-Porovnáva skladové zásoby z IC Office s aktívnymi ponukami na Allegro a
-párovanie robí podľa **kódu produktu (SKU)** - v IC Office ide o stĺpec
-"Kód" v exporte tovaru, na Allegro o pole "ID zo systému predajcu"
-(`external.id`) na ponuke. Aby sync fungoval, každá Allegro ponuka musí mať
-toto pole vyplnené hodnotou zhodnou s kódom v IC Office.
+Porovnáva skladové zásoby z IC Office s ponukami na Allegro a párovanie
+robí podľa **kódu produktu (SKU)** - v IC Office ide o stĺpec "Kód"
+v exporte tovaru (XLSX), na Allegro o stĺpec `EXTERNAL_ID` v CSV exporte
+ponúk (zodpovedá polu "ID zo systému predajcu" na ponuke). Aby sync
+fungoval, každá Allegro ponuka musí mať toto pole vyplnené hodnotou
+zhodnou s kódom v IC Office.
 
 ### Nastavenie
 
-1. **IC Office sklad (CSV export)**: momentálne sa nesťahuje automaticky.
-   Pred každým behom manuálne stiahnite export tovaru zo sekcie
-   **Sklady -> Tovar** v IC Office a uložte ho na cestu z
-   `IC_OFFICE_STOCK_CSV` (predvolene `./downloads/sklad.csv`). Ak sa názvy
-   stĺpcov v exporte líšia od predvolených ("Kód", "Sklad", "Názov"),
-   upravte `IC_OFFICE_STOCK_*_COLUMN` v `.env`.
+1. **IC Office sklad (export Sklady -> Tovar)**: momentálne sa nesťahuje
+   automaticky. Pred každým behom manuálne stiahnite export tovaru a
+   uložte ho na cestu z `IC_OFFICE_STOCK_FILE` (predvolene
+   `./downloads/sklad.xlsx` - podporovaný je XLSX aj CSV podľa prípony).
+   Očakávané stĺpce: "Kód" (SKU), "Množstvo" (aktuálny počet kusov na
+   sklade), "Názov". Ak sa názvy stĺpcov v exporte líšia, upravte
+   `IC_OFFICE_STOCK_*_COLUMN` v `.env`.
    - *Automatizácia sťahovania tohto exportu cez Playwright sa dá doplniť
      rovnako ako pri dodacích listoch, len treba nahrať presné selektory
      (`playwright codegen`) pre danú stránku exportu.*
 
-2. **Allegro API prístup**:
-   - Založte aplikáciu na https://apps.developer.allegro.pl/ (typ "Device
-     aplikácia" alebo obdobný typ pre skripty bez webového backendu),
-     doplňte `ALLEGRO_CLIENT_ID` a `ALLEGRO_CLIENT_SECRET` do `.env`.
-   - Spustite jednorazovo `python allegro_device_login.py`, otvorte
-     vypísanú URL, prihláste sa ako predajca a potvrďte prístup. Token sa
-     uloží do `ALLEGRO_TOKEN_STORE` (`./allegro_token.json` - nikdy do
-     gitu, je v `.gitignore`) a odvtedy sa už sám obnovuje.
-   - Pre testovanie bez rizika zásahu do ostrých ponúk možno prepnúť na
-     Allegro sandbox (`ALLEGRO_AUTH_URL` / `ALLEGRO_API_URL` v `.env`,
-     hodnoty v komentári pri týchto premenných v `config.py`) - vyžaduje
-     samostatnú sandboxovú appku a testovací predajcovský účet.
+2. **Allegro ponuky** - dva spôsoby, dajú sa aj kombinovať:
+   - **CSV export** (jednoduchšie na štart): v predajcovskom paneli
+     Allegro exportujte "Moje ponuky" do CSV (stĺpce
+     `OFFER_ID,NAME,EXTERNAL_ID,STATUS,GTIN,STOCK,...`) a uložte na cestu
+     z `ALLEGRO_OFFERS_CSV` (predvolene `./downloads/allegro_export.csv`).
+     Na samotné **čítanie** stavu stačí tento súbor - OAuth netreba.
+   - **Živé REST API** (`allegro.fetch_active_offers()`): načíta aktívne
+     ponuky priamo z Allegra bez potreby manuálneho exportu.
+   - **Zápis zmien** (úprava počtu kusov) ide VŽDY cez REST API, aj keď sa
+     na čítanie použil CSV export (CSV obsahuje `OFFER_ID`, takže sa dá
+     rovno adresovať konkrétna ponuka bez ďalšieho vyhľadávania). Preto je
+     na úpravu vždy potrebný OAuth prístup:
+     - Založte aplikáciu na https://apps.developer.allegro.pl/ (typ
+       "Device aplikácia" alebo obdobný typ pre skripty bez webového
+       backendu), doplňte `ALLEGRO_CLIENT_ID` a `ALLEGRO_CLIENT_SECRET`
+       do `.env`.
+     - Spustite jednorazovo `python allegro_device_login.py`, otvorte
+       vypísanú URL, prihláste sa ako predajca a potvrďte prístup. Token
+       sa uloží do `ALLEGRO_TOKEN_STORE` (`./allegro_token.json` - nikdy
+       do gitu, je v `.gitignore`) a odvtedy sa už sám obnovuje.
+     - Pre testovanie bez rizika zásahu do ostrých ponúk možno prepnúť na
+       Allegro sandbox (`ALLEGRO_AUTH_URL` / `ALLEGRO_API_URL` v `.env`)
+       - vyžaduje samostatnú sandboxovú appku a testovací predajcovský účet.
 
-3. **Spustenie samostatne** (bez celého `main.py`):
+3. **Spustenie**:
    ```bash
+   # Živé REST API na čítanie aj zápis (potrebný OAuth, viď vyššie):
    python stock_sync.py
+
+   # Alebo z Pythonu, s ponukami z CSV exportu ako zdrojom na čítanie
+   # (zápis stále ide cez REST API, OAuth je aj tak potrebný):
+   python -c "
+   import allegro, stock_sync
+   offers = allegro.load_offers_from_csv()
+   stock_sync.sync_stock_to_allegro(allegro_offers=offers)
+   "
    ```
+   Na "nanečisto" porovnanie bez akejkoľvek úpravy na Allegro (napr. keď
+   OAuth ešte nie je nastavené) pridajte `apply=False`:
+   `stock_sync.sync_stock_to_allegro(allegro_offers=offers, apply=False)`
+   - vypíše, čo by sa zmenilo, ale nič neupraví.
 
 ### Čo sync robí a čo nie
 
-- **Robí**: pri zhode SKU upraví počet kusov (`stock.available`) na Allegro
-  podľa IC Office. Tovar na sklade bez zodpovedajúcej Allegro ponuky zapíše
-  do CSV reportu (`ALLEGRO_MISSING_ITEMS_REPORT`).
+- **Robí**: pri presnej zhode SKU upraví počet kusov (`stock.available`)
+  na Allegro podľa IC Office. Tovar na sklade bez zodpovedajúcej Allegro
+  ponuky zapíše do CSV reportu (`ALLEGRO_MISSING_ITEMS_REPORT`).
+- **Približné zhody** (Allegro `EXTERNAL_ID` má dopísanú poznámku za
+  medzerou, napr. `"1800402 bazos"` namiesto `"1800402"`) sa iba vypíšu
+  na manuálnu kontrolu - automaticky sa NEUPRAVUJÚ, aby sa predišlo
+  zmene nesprávnej ponuky pri chybnej zhode.
 - **Nerobí automaticky**: nevytvára nové Allegro ponuky pre chýbajúci
   tovar. Vytvorenie ponuky vyžaduje priradenie Allegro kategórie a jej
   povinných parametrov (značka, rozmer, OE číslo a pod. - líšia sa podľa
