@@ -17,8 +17,24 @@ TIP na doplnenie selektorov:
     Tento vygenerovaný kód potom len skopírujete do príslušnej funkcie login().
 """
 
+import json
 from pathlib import Path
 from playwright.sync_api import BrowserContext, Page
+
+
+def load_processed_ids(store_path: Path) -> set[str]:
+    """Načíta množinu už spracovaných identifikátorov (napr. čísel dokladov) z JSON súboru."""
+    if not store_path.exists():
+        return set()
+    return set(json.loads(store_path.read_text(encoding="utf-8")))
+
+
+def mark_processed(store_path: Path, id_: str) -> None:
+    """Pridá identifikátor do JSON súboru už spracovaných položiek."""
+    ids = load_processed_ids(store_path)
+    ids.add(id_)
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path.write_text(json.dumps(sorted(ids), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def new_context(browser, download_dir: str) -> BrowserContext:

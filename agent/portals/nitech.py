@@ -12,7 +12,9 @@ from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 import config
-from portals.base import wait_and_save_download
+from portals.base import wait_and_save_download, load_processed_ids, mark_processed
+
+PROCESSED_DELIVERY_NOTES_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_nitech_delivery_notes.json"
 
 
 def login(page: Page) -> None:
@@ -40,17 +42,14 @@ def login(page: Page) -> None:
 
 def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
     """
-    Otvorí sekciu Dodacie listy a stiahne všetky zobrazené dokumenty cez
-    export do CSV.
-
-    TODO: momentálne stiahne VŠETKY dodacie listy zobrazené v zozname pri
-    každom spustení - treba doplniť evidenciu už spracovaných čísel
-    dokladov (napr. JSON súbor), aby sa duplicitne nesťahovalo/nenahrávalo
-    to isté (viď README.md, sekcia "Duplicitné sťahovanie").
+    Otvorí sekciu Dodacie listy a stiahne dokumenty, ktoré ešte neboli
+    stiahnuté (sledované v PROCESSED_DELIVERY_NOTES_FILE, aby sa pri
+    opakovaných behoch nesťahovalo/nenahrávalo to isté).
     """
     page.goto(config.NITECH_DELIVERY_NOTES_URL)
 
     downloaded_files: list[Path] = []
+    processed = load_processed_ids(PROCESSED_DELIVERY_NOTES_FILE)
 
     # Odkazy na jednotlivé dodacie listy majú tvar "DL" + číslo dokladu,
     # napr. "DL26092852".
@@ -60,11 +59,20 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
     for i in range(count):
         # Po každom stiahnutí sa vraciame na zoznam, preto sa lokátor
         # vyhodnocuje nanovo podľa aktuálneho indexu.
-        page.get_by_role("link", name=delivery_note_pattern).nth(i).click()
+        link = page.get_by_role("link", name=delivery_note_pattern).nth(i)
+        document_number = link.inner_text().strip()
+
+        if document_number in processed:
+            continue
+
+        link.click()
 
         export_link = page.get_by_role("link", name="Exportovať do CSV")
         file_path = wait_and_save_download(page, export_link, download_dir)
         downloaded_files.append(file_path)
+
+        mark_processed(PROCESSED_DELIVERY_NOTES_FILE, document_number)
+        processed.add(document_number)
 
         page.goto(config.NITECH_DELIVERY_NOTES_URL)
 
