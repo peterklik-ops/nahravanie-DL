@@ -58,7 +58,7 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
         ic_office.create_order_for_subcustomer(
             ic_office_page,
             customer_name=order["subcustomer_name"],
-            note=" - ".join(note_parts),
+            note=" ".join(note_parts),
         )
 
         _mark_order_processed(order["order_number"])

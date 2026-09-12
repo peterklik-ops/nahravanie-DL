@@ -41,7 +41,7 @@ INTERCARS_DELIVERY_NOTES_URL = os.getenv("INTERCARS_DELIVERY_NOTES_URL")  # TODO
 INTERCARS_OFFER_URL = os.getenv("INTERCARS_OFFER_URL")  # TODO: URL zákazníckej ponuky (ceny)
 
 # --- IC Office ---
-IC_OFFICE_LOGIN_URL = os.getenv("IC_OFFICE_LOGIN_URL")  # TODO
+IC_OFFICE_LOGIN_URL = os.getenv("IC_OFFICE_LOGIN_URL", "https://ic-office.sk/")
 IC_OFFICE_USERNAME = os.getenv("IC_OFFICE_USERNAME")
 IC_OFFICE_PASSWORD = os.getenv("IC_OFFICE_PASSWORD")
 
