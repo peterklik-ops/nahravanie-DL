@@ -131,6 +131,79 @@ def upload_delivery_note(
     page.locator("#importGoods").get_by_text("Áno").click()
 
 
+# Hodnota <option> v stĺpcovom filtri #state (tabuľka Evidencia zákaziek)
+# zodpovedajúca stavu "Pracuje sa" (potvrdené podľa reálneho HTML).
+CONTRACT_STATE_PRACUJE_SA = "4"
+
+
+def find_zakazka_for_subcustomer(
+    page: Page, customer_name: str, custom_note: str | None = None
+) -> dict:
+    """
+    Nájde v Evidencii zákaziek (Sklad -> Zákazky) zákazky zákazníka
+    `customer_name` v stave "Pracuje sa", filtrované cez stĺpcové filtre
+    tabuľky #database_contracts (#state select, #customer text input).
+
+    Keďže jeden podriadený zákazník môže mať súčasne viac zákaziek so
+    stavom "Pracuje sa", pri viacerých zhodách sa disambiguuje podľa
+    toho, či stĺpec "Popis" (do ktorého create_order_for_subcustomer
+    zapisuje "<číslo objednávky> <custom_note>") obsahuje `custom_note`.
+
+    Vráti dict {contract_id, number, description} pre PRÁVE JEDNU
+    nájdenú zákazku - contract_id je interné číselné ID záznamu (napr.
+    "104227", z id="div104227" na .custzak elemente v riadku), number
+    je zobrazené číslo zákazky (napr. "2026/7212").
+
+    TODO: nepotvrdené, či sa toto interné contract_id zhoduje s hodnotou
+    <option> v #contract_0 vo wizarde nahrávania dodacieho listu - treba
+    overiť podľa reálneho HTML #contract_0.
+
+    Ak sa nenájde presne jedna zhoda, vyhodí ValueError - nesmie sa
+    tichým odhadom priradiť dodací list k cudzej/nesprávnej zákazke
+    (reálna chyba v sklade/účtovníctve).
+    """
+    page.get_by_role("link", name=" Zákazky").click()
+
+    page.locator("#state").select_option(CONTRACT_STATE_PRACUJE_SA)
+    customer_filter = page.locator("#customer")
+    customer_filter.fill(customer_name)
+    customer_filter.press("Enter")
+
+    rows = page.locator("#database_contracts tbody tr")
+    matches = []
+
+    for i in range(rows.count()):
+        row = rows.nth(i)
+        custzak = row.locator(".custzak")
+        if custzak.count() == 0:
+            continue
+
+        div_id = custzak.get_attribute("id") or ""
+        contract_id = div_id.removeprefix("div")
+        if not contract_id:
+            continue
+
+        matches.append({
+            "contract_id": contract_id,
+            "number": custzak.locator("span").inner_text().strip(),
+            "description": row.locator("td").nth(7).inner_text().strip(),
+        })
+
+    if custom_note:
+        with_matching_note = [m for m in matches if custom_note in m["description"]]
+        if with_matching_note:
+            matches = with_matching_note
+
+    if len(matches) != 1:
+        raise ValueError(
+            f"Nepodarilo sa jednoznačne určiť zákazku v stave 'Pracuje sa' pre "
+            f"zákazníka '{customer_name}' (nájdených zhôd: {len(matches)}, "
+            f"custom_note={custom_note!r}) - vyžaduje ručnú kontrolu."
+        )
+
+    return matches[0]
+
+
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
     """
     Vyhľadá zákazníka podľa mena, vytvorí zákazku, skopíruje pridelené
