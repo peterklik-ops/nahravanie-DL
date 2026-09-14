@@ -28,13 +28,40 @@ def login(page: Page) -> None:
 # aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
 WAREHOUSE_MEDZISKLAD = "231"
 
+# Hodnoty <option value="..."> v <select id="margins_all"> podľa percenta
+# marže (zodpovedá atribútu data-margin="..." v reálnom HTML formulára).
+MARGIN_OPTION_VALUES = {
+    5: "5038",
+    10: "5039",
+    11.11: "13517",
+    15: "5040",
+    20: "5041",
+    25: "5042",
+    30: "5043",
+    35: "5044",
+    37: "21326",
+    40: "5045",
+    45: "5046",
+    47: "5138",
+    50: "5047",
+    52.2: "13520",
+    55: "5048",
+    60: "5049",
+    65: "5050",
+    70: "5051",
+    75: "5052",
+    80: "5053",
+    85: "5054",
+    90: "5055",
+    95: "5056",
+    100: "5057",
+}
+
 # Marža podľa podriadeného zákazníka: 15 % pre všetkých, okrem výnimiek
-# uvedených tu (napr. Marek Jaszay má 10 %).
-# TODO: doplniť skutočnú hodnotu <option value="..."> pre 10 % maržu -
-# "???" je len placeholder, kým nepošlete presný select_option riadok.
-DEFAULT_MARGIN_VALUE = "5040"  # 15 % (potvrdené z reálnej nahrávky)
-MARGIN_OVERRIDES = {
-    "Marek Jaszay": "???",  # TODO: 10 % - doplniť skutočné value
+# uvedených tu (Marek Jaszay má 10 %).
+DEFAULT_MARGIN_PERCENT = 15
+MARGIN_PERCENT_OVERRIDES = {
+    "Marek Jaszay": 10,
 }
 
 
@@ -76,7 +103,8 @@ def upload_delivery_note(
     teste), táto funkcia to NERIEŠI automaticky - to by sa nemalo stať,
     keďže download_new_delivery_notes() už sleduje spracované súbory.
     """
-    margin_value = MARGIN_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_VALUE)
+    margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
+    margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
     page.locator("a").filter(has_text="Sklady").first.click()
     page.get_by_role("link", name="Tovar").click()
