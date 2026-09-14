@@ -12,7 +12,12 @@ from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 import config
-from portals.base import wait_and_save_download, load_processed_ids, mark_processed
+from portals.base import (
+    wait_and_save_download,
+    load_processed_ids,
+    mark_processed,
+    parse_subcustomer_note,
+)
 
 PROCESSED_DELIVERY_NOTES_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_nitech_delivery_notes.json"
 
@@ -40,15 +45,22 @@ def login(page: Page) -> None:
         pass
 
 
-def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
+def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
     """
     Otvorí sekciu Dodacie listy a stiahne dokumenty, ktoré ešte neboli
     stiahnuté (sledované v PROCESSED_DELIVERY_NOTES_FILE, aby sa pri
     opakovaných behoch nesťahovalo/nenahrávalo to isté).
+
+    Vráti zoznam slovníkov {path, subcustomer_name, custom_note, raw_note} -
+    detail dodacieho listu obsahuje rovnakú poznámku ako zoznam objednávok
+    podriadených zákazníkov ("Podriadený zákazník: MENO (adresa) ... >
+    vlastná poznámka"), takže sa dá vyťažiť hneď pri sťahovaní bez ďalšej
+    navigácie navyše. Pri bežných (nie podriadený zákazník) dodacích listoch
+    budú subcustomer_name aj custom_note None.
     """
     page.goto(config.NITECH_DELIVERY_NOTES_URL)
 
-    downloaded_files: list[Path] = []
+    downloaded: list[dict] = []
     processed = load_processed_ids(PROCESSED_DELIVERY_NOTES_FILE)
 
     # Odkazy na jednotlivé dodacie listy majú tvar "DL" + číslo dokladu,
@@ -67,22 +79,20 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
 
         link.click()
 
+        note_item = page.locator(".footer li", has_text="Poznámka:")
+        raw_note = note_item.locator("span").nth(1).inner_text() if note_item.count() > 0 else ""
+        note_info = parse_subcustomer_note(raw_note)
+
         export_link = page.get_by_role("link", name="Exportovať do CSV")
         file_path = wait_and_save_download(page, export_link, download_dir)
-        downloaded_files.append(file_path)
+        downloaded.append({"path": file_path, **note_info})
 
         mark_processed(PROCESSED_DELIVERY_NOTES_FILE, document_number)
         processed.add(document_number)
 
         page.goto(config.NITECH_DELIVERY_NOTES_URL)
 
-    return downloaded_files
-
-
-# Poznámka v zozname má tvar "Podriadený zákazník: MENO (adresa) Doprava: ... Platba: ...",
-# prípadne s vlastnou poznámkou zákazníka pripojenou za "> " na konci.
-_SUBCUSTOMER_NAME_PATTERN = re.compile(r"Podriadený zákazník:\s*(?P<name>[^(]+?)\s*\(")
-_CUSTOM_NOTE_PATTERN = re.compile(r">\s*(?P<custom>.+)", re.DOTALL)
+    return downloaded
 
 
 def list_subcustomer_orders(page: Page) -> list[dict]:
@@ -106,14 +116,6 @@ def list_subcustomer_orders(page: Page) -> list[dict]:
         order_number = item.locator(".document-number a").inner_text().strip()
         note_text = item.locator(".document-note span:not(.grey-foreground)").inner_text()
 
-        name_match = _SUBCUSTOMER_NAME_PATTERN.search(note_text)
-        custom_match = _CUSTOM_NOTE_PATTERN.search(note_text)
-
-        orders.append({
-            "order_number": order_number,
-            "subcustomer_name": name_match.group("name").strip() if name_match else None,
-            "custom_note": custom_match.group("custom").strip() if custom_match else None,
-            "raw_note": note_text.strip(),
-        })
+        orders.append({"order_number": order_number, **parse_subcustomer_note(note_text)})
 
     return orders

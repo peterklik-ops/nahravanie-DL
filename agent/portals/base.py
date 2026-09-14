@@ -18,8 +18,31 @@ TIP na doplnenie selektorov:
 """
 
 import json
+import re
 from pathlib import Path
 from playwright.sync_api import BrowserContext, Page
+
+# Poznámka pri podriadenom zákazníkovi (v Nitechu, na zozname objednávok aj
+# na detaile dodacieho listu) má tvar "Podriadený zákazník: MENO (adresa)
+# Doprava: ... Platba: ...", prípadne s vlastnou poznámkou zákazníka
+# pripojenou za "> " na konci.
+SUBCUSTOMER_NAME_PATTERN = re.compile(r"Podriadený zákazník:\s*(?P<name>[^(]+?)\s*\(")
+CUSTOM_NOTE_PATTERN = re.compile(r">\s*(?P<custom>.+)", re.DOTALL)
+
+
+def parse_subcustomer_note(note_text: str) -> dict:
+    """
+    Rozparsuje poznámku podriadeného zákazníka na meno a prípadnú vlastnú
+    poznámku (text za "> "). Ak text nezodpovedá očakávanému tvaru (napr.
+    ide o bežnú objednávku bez podriadeného zákazníka), obe polia budú None.
+    """
+    name_match = SUBCUSTOMER_NAME_PATTERN.search(note_text)
+    custom_match = CUSTOM_NOTE_PATTERN.search(note_text)
+    return {
+        "subcustomer_name": name_match.group("name").strip() if name_match else None,
+        "custom_note": custom_match.group("custom").strip() if custom_match else None,
+        "raw_note": note_text.strip(),
+    }
 
 
 def load_processed_ids(store_path: Path) -> set[str]:

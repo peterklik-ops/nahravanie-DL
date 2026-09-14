@@ -11,7 +11,12 @@ from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 import config
-from portals.base import wait_and_save_download, load_processed_ids, mark_processed
+from portals.base import (
+    wait_and_save_download,
+    load_processed_ids,
+    mark_processed,
+    parse_subcustomer_note,
+)
 
 PROCESSED_DELIVERY_NOTES_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_eurovat_delivery_notes.json"
 
@@ -39,15 +44,22 @@ def login(page: Page) -> None:
         pass
 
 
-def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
+def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
     """
     Otvorí sekciu Dodacie listy a stiahne dokumenty, ktoré ešte neboli
     stiahnuté (sledované v PROCESSED_DELIVERY_NOTES_FILE, aby sa pri
     opakovaných behoch nesťahovalo/nenahrávalo to isté).
+
+    Vráti zoznam slovníkov {path, subcustomer_name, custom_note, raw_note} -
+    rovnaký tvar ako nitech.download_new_delivery_notes(). Eurovat beží na
+    tej istej platforme ako Nitech, takže sa skúša vyťažiť rovnaká
+    "Poznámka" ako pri Nitechu; ak dodací list poznámku podriadeného
+    zákazníka nemá (alebo Eurovat túto funkciu vôbec nepoužíva),
+    subcustomer_name aj custom_note budú None.
     """
     page.goto(config.EUROVAT_DELIVERY_NOTES_URL)
 
-    downloaded_files: list[Path] = []
+    downloaded: list[dict] = []
     processed = load_processed_ids(PROCESSED_DELIVERY_NOTES_FILE)
 
     # Odkazy na jednotlivé dodacie listy sú číslo dokladu, napr. "2662260556".
@@ -67,13 +79,17 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[Path]:
 
         link.click()
 
+        note_item = page.locator(".footer li", has_text="Poznámka:")
+        raw_note = note_item.locator("span").nth(1).inner_text() if note_item.count() > 0 else ""
+        note_info = parse_subcustomer_note(raw_note)
+
         export_link = page.get_by_role("link", name="Exportovať do CSV")
         file_path = wait_and_save_download(page, export_link, download_dir)
-        downloaded_files.append(file_path)
+        downloaded.append({"path": file_path, **note_info})
 
         mark_processed(PROCESSED_DELIVERY_NOTES_FILE, document_number)
         processed.add(document_number)
 
         page.goto(config.EUROVAT_DELIVERY_NOTES_URL)
 
-    return downloaded_files
+    return downloaded

@@ -46,8 +46,14 @@ COLUMN_SETTINGS = {
 }
 
 
-def run_delivery_notes_step(browser) -> list[tuple[str, "Path"]]:
-    """Stiahne dodacie listy zo všetkých dodávateľských portálov."""
+def run_delivery_notes_step(browser) -> list[tuple[str, dict]]:
+    """
+    Stiahne dodacie listy zo všetkých dodávateľských portálov.
+
+    Vráti zoznam dvojíc (názov zdroja, dict) - dict má tvar
+    {path, subcustomer_name, custom_note, raw_note}, viď
+    portals.*.download_new_delivery_notes().
+    """
     all_files = []
 
     for name, module in PORTALS:
@@ -70,7 +76,7 @@ def run_delivery_notes_step(browser) -> list[tuple[str, "Path"]]:
     return all_files
 
 
-def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
+def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
     """Nahrá stiahnuté dodacie listy do IC Office."""
     if not files:
         print("Žiadne nové dodacie listy na nahratie.")
@@ -80,7 +86,9 @@ def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
     page = context.new_page()
     try:
         ic_office.login(page)
-        for source_name, file_path in files:
+        for source_name, item in files:
+            file_path = item["path"]
+            subcustomer_name = item.get("subcustomer_name")
             try:
                 # TODO: automatické párovanie dodacieho listu na správnu
                 # zákazku (contract_option_value v IC Office) ešte nie je
@@ -94,7 +102,7 @@ def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
                 #       supplier_name=SUPPLIER_NAMES[source_name],
                 #       column_settings_value=COLUMN_SETTINGS[source_name],
                 #       contract_option_value=...,  # doplniť
-                #       subcustomer_name=...,  # doplniť (kvôli marži)
+                #       subcustomer_name=subcustomer_name,
                 #   )
                 raise NotImplementedError(
                     f"Chýba automatické určenie zákazky pre {file_path.name} "
