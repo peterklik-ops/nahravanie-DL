@@ -24,24 +24,60 @@ def login(page: Page) -> None:
     page.get_by_role("button", name="Prihlásiť").click()
 
 
-def upload_delivery_note(page: Page, file_path: Path, supplier_name: str) -> None:
-    """
-    Prejde do sekcie Sklad -> Tovar -> Naskladniť z dodacieho listu,
-    vyberie dodávateľa (`supplier_name` presne podľa zoznamu "Výber
-    dodávateľa", napr. "EURO-VAT" alebo "Autoparts - Nitech"), nahrá CSV
-    súbor a potvrdí mapovanie stĺpcov.
+# Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
+# aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
+WAREHOUSE_MEDZISKLAD = "231"
 
-    STAV: toto je zatiaľ len prvá časť procesu (po potvrdenie mapovania
-    stĺpcov). Ďalej nasleduje:
-      - výber "umiestnenia" (zákazky) podľa čísla zákazky uvedeného na
-        dodacom liste (meno zákazníka je len doplnkové, rozhoduje číslo) -
-        EŠTE NEIMPLEMENTOVANÉ, čaká sa na ďalšiu codegen nahrávku.
-      - výnimky (zatiaľ zámerne bokom, vrátime sa k nim neskôr):
-        poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
-        "servis" namiesto na zákazku; záporná hodnota dodacieho listu
-        (vratka) -> tovar ide do skladu "vratka".
-      - výber skladu (napr. "medzisklad") a záverečné potvrdenie/uloženie.
+# Marža podľa podriadeného zákazníka: 15 % pre všetkých, okrem výnimiek
+# uvedených tu (napr. Marek Jaszay má 10 %).
+# TODO: doplniť skutočnú hodnotu <option value="..."> pre 10 % maržu -
+# "???" je len placeholder, kým nepošlete presný select_option riadok.
+DEFAULT_MARGIN_VALUE = "5040"  # 15 % (potvrdené z reálnej nahrávky)
+MARGIN_OVERRIDES = {
+    "Marek Jaszay": "???",  # TODO: 10 % - doplniť skutočné value
+}
+
+
+def upload_delivery_note(
+    page: Page,
+    file_path: Path,
+    supplier_name: str,
+    column_settings_value: str,
+    contract_option_value: str,
+    subcustomer_name: str | None = None,
+    warehouse_value: str = WAREHOUSE_MEDZISKLAD,
+) -> None:
     """
+    Naskladní dodací list do IC Office (Sklad -> Tovar -> Naskladniť z
+    dodacieho listu).
+
+    `supplier_name` - presne podľa zoznamu "Výber dodávateľa" (napr.
+    "EURO-VAT" alebo "Autoparts - Nitech").
+
+    `column_settings_value` - uložený preset mapovania stĺpcov CSV, líši
+    sa podľa dodávateľa (Eurovat "21", Nitech "62").
+
+    `contract_option_value` - interné ID zákazky (hodnota <option> v
+    #contract_0, NIE zobrazené číslo zákazky ako "7193").
+    TODO: automatické párovanie dodacieho listu na správnu zákazku
+    (vytvorenú v order_sync.py) ešte nie je navrhnuté - túto hodnotu
+    musí zatiaľ dodať volajúci (napr. na základe ručnej kontroly).
+
+    `subcustomer_name` - meno podriadeného zákazníka, podľa ktorého sa
+    určí marža (MARGIN_OVERRIDES, inak DEFAULT_MARGIN_VALUE).
+
+    Výnimky (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté):
+    poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
+    "servis" namiesto na zákazku; záporná hodnota dodacieho listu
+    (vratka) -> tovar ide do skladu "vratka".
+
+    Poznámka: ak IC Office pri nahrávaní zobrazí varovanie, že dodací
+    list s týmto číslom už bol nahraný (stalo sa to raz pri ručnom
+    teste), táto funkcia to NERIEŠI automaticky - to by sa nemalo stať,
+    keďže download_new_delivery_notes() už sleduje spracované súbory.
+    """
+    margin_value = MARGIN_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_VALUE)
+
     page.locator("a").filter(has_text="Sklady").first.click()
     page.get_by_role("link", name="Tovar").click()
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
@@ -54,15 +90,17 @@ def upload_delivery_note(page: Page, file_path: Path, supplier_name: str) -> Non
     page.get_by_label("Vybrať súbor").set_input_files(str(file_path))
     page.get_by_role("button", name="Ďalší").click()
 
-    # Mapovanie stĺpcov CSV - uložený preset, potvrdené ako stály (nemení sa).
-    page.locator("#columnSettings").select_option("21")
+    page.locator("#columnSettings").select_option(column_settings_value)
     page.get_by_role("button", name="Ďalší").click()
-    page.get_by_role("button", name="OK").click()
 
-    raise NotImplementedError(
-        "Doplňte výber zákazky/umiestnenia podľa čísla zákazky na dodacom liste, "
-        "výber skladu a záverečné potvrdenie naskladnenia"
-    )
+    page.locator("#margins_all").select_option(margin_value)
+    page.locator("#margins_all").press("Tab")
+    page.locator("#contract_0").select_option(contract_option_value)
+    page.locator("#warehouse_0").select_option(warehouse_value)
+    page.get_by_role("button", name="Ďalší").click()
+
+    page.get_by_role("button", name="Naskladniť").click()
+    page.locator("#importGoods").get_by_text("Áno").click()
 
 
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:

@@ -38,6 +38,13 @@ SUPPLIER_NAMES = {
     "Eurovat": "EURO-VAT",
 }
 
+# Uložený preset mapovania stĺpcov CSV (#columnSettings) - líši sa podľa
+# dodávateľa, potvrdené ako stály (nemení sa).
+COLUMN_SETTINGS = {
+    "Nitech": "62",
+    "Eurovat": "21",
+}
+
 
 def run_delivery_notes_step(browser) -> list[tuple[str, "Path"]]:
     """Stiahne dodacie listy zo všetkých dodávateľských portálov."""
@@ -75,9 +82,24 @@ def run_upload_step(browser, files: list[tuple[str, "Path"]]) -> None:
         ic_office.login(page)
         for source_name, file_path in files:
             try:
-                supplier_name = SUPPLIER_NAMES[source_name]
-                ic_office.upload_delivery_note(page, file_path, supplier_name)
-                print(f"Nahraté do IC Office: {file_path.name} (zdroj: {source_name})")
+                # TODO: automatické párovanie dodacieho listu na správnu
+                # zákazku (contract_option_value v IC Office) ešte nie je
+                # navrhnuté, preto tento krok zatiaľ nemôže bežať plne
+                # automaticky - mechanika naskladnenia je už hotová
+                # v ic_office.upload_delivery_note(), len jej chýba táto
+                # hodnota. Volanie bude vyzerať takto:
+                #
+                #   ic_office.upload_delivery_note(
+                #       page, file_path,
+                #       supplier_name=SUPPLIER_NAMES[source_name],
+                #       column_settings_value=COLUMN_SETTINGS[source_name],
+                #       contract_option_value=...,  # doplniť
+                #       subcustomer_name=...,  # doplniť (kvôli marži)
+                #   )
+                raise NotImplementedError(
+                    f"Chýba automatické určenie zákazky pre {file_path.name} "
+                    "(contract_option_value) - upload zatiaľ nemôže bežať bez zásahu."
+                )
             except Exception:
                 print(f"[CHYBA] Zlyhalo nahratie {file_path.name}:")
                 traceback.print_exc()
