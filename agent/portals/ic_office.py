@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 import config
 
@@ -235,13 +235,19 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     # vyžadujeme presnú zhodu mena: ak sa nenájde, ide pravdepodobne o
     # nezaregistrovaného/nového zákazníka a je bezpečnejšie to nahlásiť,
     # než zákazku omylom priradiť k inému (podobne pomenovanému) klientovi.
-    customer_link = page.get_by_role("link", name=customer_name, exact=True)
-    if customer_link.count() == 0:
+    #
+    # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
+    # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na viditeľnosť
+    # odkazu (s timeoutom), namiesto okamžitej kontroly počtu.
+    customer_link = page.get_by_role("link", name=customer_name, exact=True).first
+    try:
+        customer_link.wait_for(state="visible", timeout=8000)
+    except PlaywrightTimeoutError:
         raise ValueError(
             f"Zákazník '{customer_name}' sa v IC Office nenašiel presnou zhodou mena "
             "- pravdepodobne nie je zaregistrovaný alebo sa meno nezhoduje s Nitechom."
         )
-    customer_link.first.click()
+    customer_link.click()
 
     page.get_by_role("link", name="+ Pridať zákazku").click()
 
