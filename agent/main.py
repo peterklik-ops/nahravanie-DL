@@ -137,6 +137,8 @@ def run_subcustomer_order_sync_step(browser) -> None:
         created = order_sync.sync_subcustomer_orders(nitech_page, ic_page)
         if created:
             print(f"Vytvorených zákaziek pre podriadených zákazníkov: {len(created)}")
+            for order in created:
+                print(f"  - {order['order_number']}: {order['subcustomer_name']}")
         else:
             print("Žiadne nové objednávky podriadených zákazníkov.")
     except Exception:
