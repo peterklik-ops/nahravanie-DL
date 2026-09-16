@@ -45,6 +45,19 @@ def login(page: Page) -> None:
         pass
 
 
+def list_delivery_note_numbers(page: Page) -> list[str]:
+    """
+    Vráti čísla dokladov všetkých aktuálne zobrazených dodacích listov,
+    bez otvárania detailu alebo sťahovania. Používa sa najmä na seedovanie
+    PROCESSED_DELIVERY_NOTES_FILE pred prvým ostrým behom (viď
+    seed_processed_delivery_notes.py).
+    """
+    page.goto(config.NITECH_DELIVERY_NOTES_URL)
+    delivery_note_pattern = re.compile(r"^DL\d+$")
+    links = page.get_by_role("link", name=delivery_note_pattern)
+    return [links.nth(i).inner_text().strip() for i in range(links.count())]
+
+
 def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
     """
     Otvorí sekciu Dodacie listy a stiahne dokumenty, ktoré ešte neboli
