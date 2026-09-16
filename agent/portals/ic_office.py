@@ -223,7 +223,10 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     """
     page.get_by_role("link", name=" Klienti ").click()
 
-    search_box = page.get_by_role("textbox", name="Hľadať klienta / EČV")
+    # Horný vyhľadávač "Hľadať klienta / EČV" sa ukázal ako nespoľahlivý
+    # (nenašiel zákazníka aj pri presnej zhode mena) - stĺpcový filter
+    # "Meno / Firma" priamo v tabuľke funguje spoľahlivo (overené).
+    search_box = page.get_by_placeholder("Meno / Firma")
     search_box.fill(customer_name)
     search_box.press("Enter")
 
