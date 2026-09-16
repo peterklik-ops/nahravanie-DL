@@ -7,6 +7,8 @@ zákazníckeho profilu, export dodacieho listu do CSV).
 Referencia: https://www.nitech.sk/sk/informacia/dodacie-listy
 """
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError

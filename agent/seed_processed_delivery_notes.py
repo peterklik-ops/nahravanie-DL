@@ -12,6 +12,8 @@ Použitie (z priečinka agent/, s aktivovaným venv a vyplneným .env):
     python seed_processed_delivery_notes.py
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from playwright.sync_api import sync_playwright

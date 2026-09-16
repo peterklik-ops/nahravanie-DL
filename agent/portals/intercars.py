@@ -5,6 +5,8 @@ a načítanie zákazníckej cenovej ponuky (na kontrolu/úpravu predajnej ceny).
 STAV: KOSTRA - doplňte selektory podľa reálneho webu InterCars.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from playwright.sync_api import Page
 

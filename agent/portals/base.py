@@ -17,6 +17,8 @@ TIP na doplnenie selektorov:
     Tento vygenerovaný kód potom len skopírujete do príslušnej funkcie login().
 """
 
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path

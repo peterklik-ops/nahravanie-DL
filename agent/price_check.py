@@ -6,6 +6,8 @@ Bezpečnostná poistka: MARGIN_TOLERANCE zabráni tomu, aby sa cena menila
 pri zanedbateľných rozdieloch (napr. o 1 cent kvôli zaokrúhľovaniu).
 """
 
+from __future__ import annotations
+
 from playwright.sync_api import Page
 
 from portals import ic_office

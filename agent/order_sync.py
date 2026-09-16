@@ -12,6 +12,8 @@ súbore (`PROCESSED_ORDERS_FILE`), ktoré čísla objednávok už boli
 spracované, aby sa pre tú istú objednávku nevytvárali duplicitné zákazky.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from playwright.sync_api import Page

@@ -11,6 +11,8 @@ Spúšťanie na serveri: naplánujte cez cron, napr. denne o 6:00:
 Alebo pozri README.md pre alternatívu cez GitHub Actions (scheduled workflow).
 """
 
+from __future__ import annotations
+
 import traceback
 from playwright.sync_api import sync_playwright
 
