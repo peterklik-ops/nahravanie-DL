@@ -255,6 +255,27 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
     return False
 
 
+def _find_customer_link_by_exact_name(page: Page, name: str, timeout: int = 8000):
+    """
+    Vyhľadá zákazníka v tabuľke Klienti cez stĺpcový filter "Meno / Firma"
+    a počká na presnú zhodu odkazu (s timeoutom). Vráti locator alebo None,
+    ak sa v danom čase nenašiel.
+    """
+    search_box = page.get_by_placeholder("Meno / Firma")
+    search_box.fill(name)
+    search_box.press("Enter")
+
+    # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
+    # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na viditeľnosť
+    # odkazu (s timeoutom), namiesto okamžitej kontroly počtu.
+    link = page.get_by_role("link", name=name, exact=True).first
+    try:
+        link.wait_for(state="visible", timeout=timeout)
+        return link
+    except PlaywrightTimeoutError:
+        return None
+
+
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
     """
     Vyhľadá zákazníka podľa mena, vytvorí zákazku, skopíruje pridelené
@@ -266,26 +287,29 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     # Horný vyhľadávač "Hľadať klienta / EČV" sa ukázal ako nespoľahlivý
     # (nenašiel zákazníka aj pri presnej zhode mena) - stĺpcový filter
     # "Meno / Firma" priamo v tabuľke funguje spoľahlivo (overené).
-    search_box = page.get_by_placeholder("Meno / Firma")
-    search_box.fill(customer_name)
-    search_box.press("Enter")
-
+    #
     # Podriadení zákazníci sa v drvivej väčšine opakujú - musia byť vopred
     # zaregistrovaní v Nitechu aj vytvorení ako klient v IC Office. Preto
     # vyžadujeme presnú zhodu mena: ak sa nenájde, ide pravdepodobne o
     # nezaregistrovaného/nového zákazníka a je bezpečnejšie to nahlásiť,
     # než zákazku omylom priradiť k inému (podobne pomenovanému) klientovi.
-    #
-    # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
-    # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na viditeľnosť
-    # odkazu (s timeoutom), namiesto okamžitej kontroly počtu.
-    customer_link = page.get_by_role("link", name=customer_name, exact=True).first
-    try:
-        customer_link.wait_for(state="visible", timeout=8000)
-    except PlaywrightTimeoutError:
+    customer_link = _find_customer_link_by_exact_name(page, customer_name)
+
+    if customer_link is None:
+        # V IC Office je zaužívaný formát "Priezvisko Meno" pre bežné osoby
+        # (na rozdiel od Nitechu, ktorý dáva "Meno Priezvisko") - skúsi sa
+        # preto aj obrátené poradie, len pri presne dvoch slovách (firmy
+        # s "s.r.o." a pod. majú viac slov a poradie sa im meniť nemá).
+        tokens = customer_name.split()
+        if len(tokens) == 2:
+            reversed_name = f"{tokens[1]} {tokens[0]}"
+            customer_link = _find_customer_link_by_exact_name(page, reversed_name)
+
+    if customer_link is None:
         raise ValueError(
             f"Zákazník '{customer_name}' sa v IC Office nenašiel presnou zhodou mena "
-            "- pravdepodobne nie je zaregistrovaný alebo sa meno nezhoduje s Nitechom."
+            "(vrátane obráteného poradia meno/priezvisko) - pravdepodobne nie je "
+            "zaregistrovaný alebo sa meno nezhoduje s Nitechom."
         )
     customer_link.click()
 
