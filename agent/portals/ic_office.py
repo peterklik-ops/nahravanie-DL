@@ -240,17 +240,44 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
     page.locator("#state").select_option(CONTRACT_STATE_ALL)
 
     description_filter = page.locator("#description")
+
+    def _search(value: str) -> bool:
+        description_filter.fill(value)
+        description_filter.press("Enter")
+        page.wait_for_load_state("networkidle")
+
+        if not value:
+            return False
+
+        # Neoverovať len prítomnosť nejakého riadku (.count() > 0), ale
+        # skutočne prečítať Popis a potvrdiť, že hľadanú hodnotu naozaj
+        # obsahuje - inak hrozí, že sa prečíta ešte "starý" výsledok
+        # z predchádzajúceho hľadania (AJAX odpoveď doraziť neskoro),
+        # čo by túto objednávku mylne označilo za už spracovanú a
+        # zákazka by sa vôbec nevytvorila (potvrdené v praxi).
+        rows = page.locator("#database_contracts tbody tr")
+        for i in range(rows.count()):
+            row = rows.nth(i)
+            if row.locator(".custzak").count() == 0:
+                continue
+            popis = row.locator("td").nth(7).inner_text().strip()
+            if value in popis:
+                return True
+        return False
+
+    # Vyprázdniť filter pred prvým hľadaním - zabráni prelínaniu s
+    # výsledkom z predchádzajúceho volania tejto funkcie pre inú
+    # objednávku.
+    _search("")
+
     candidates = {order_number}
     if order_number.startswith("WO"):
         candidates.add(order_number.removeprefix("WO"))
 
     for candidate in candidates:
-        description_filter.fill(candidate)
-        description_filter.press("Enter")
-        page.wait_for_load_state("networkidle")
-
-        if page.locator("#database_contracts tbody .custzak").count() > 0:
+        if _search(candidate):
             return True
+        _search("")  # reset pred ďalším kandidátom / ďalším volaním
 
     return False
 
