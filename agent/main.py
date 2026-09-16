@@ -89,25 +89,30 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
         for source_name, item in files:
             file_path = item["path"]
             subcustomer_name = item.get("subcustomer_name")
+            custom_note = item.get("custom_note")
             try:
-                # TODO: automatické párovanie dodacieho listu na správnu
-                # zákazku (contract_option_value v IC Office) ešte nie je
-                # navrhnuté, preto tento krok zatiaľ nemôže bežať plne
-                # automaticky - mechanika naskladnenia je už hotová
-                # v ic_office.upload_delivery_note(), len jej chýba táto
-                # hodnota. Volanie bude vyzerať takto:
-                #
-                #   ic_office.upload_delivery_note(
-                #       page, file_path,
-                #       supplier_name=SUPPLIER_NAMES[source_name],
-                #       column_settings_value=COLUMN_SETTINGS[source_name],
-                #       contract_option_value=...,  # doplniť
-                #       subcustomer_name=subcustomer_name,
-                #   )
-                raise NotImplementedError(
-                    f"Chýba automatické určenie zákazky pre {file_path.name} "
-                    "(contract_option_value) - upload zatiaľ nemôže bežať bez zásahu."
+                if not subcustomer_name:
+                    # Dodacie listy bez poznámky podriadeného zákazníka
+                    # (bežné dodacie listy, "servis", vratka so zápornou
+                    # hodnotou) zatiaľ nemajú automatické určenie zákazky
+                    # ani skladu - dohodnuté, že sa k tomu vrátime neskôr.
+                    raise NotImplementedError(
+                        f"{file_path.name} nemá poznámku podriadeného zákazníka - "
+                        "automatické priradenie zatiaľ rieši len tento prípad."
+                    )
+
+                zakazka = ic_office.find_zakazka_for_subcustomer(
+                    page, subcustomer_name, custom_note
                 )
+                ic_office.upload_delivery_note(
+                    page,
+                    file_path,
+                    supplier_name=SUPPLIER_NAMES[source_name],
+                    column_settings_value=COLUMN_SETTINGS[source_name],
+                    zakazka_number=zakazka["number"],
+                    subcustomer_name=subcustomer_name,
+                )
+                print(f"[{source_name}] Nahraný {file_path.name} -> zákazka {zakazka['number']}")
             except Exception:
                 print(f"[CHYBA] Zlyhalo nahratie {file_path.name}:")
                 traceback.print_exc()

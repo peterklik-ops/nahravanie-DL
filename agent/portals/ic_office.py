@@ -25,8 +25,10 @@ def login(page: Page) -> None:
 
 
 # Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
-# aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
-WAREHOUSE_MEDZISKLAD = "231"
+# aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené). Pole
+# "Sklad" vo wizarde nahrávania je treeitem widget (rovnaký ako "Výber
+# dodávateľa"), nie <select> - preto ide o zobrazený názov, nie ID.
+WAREHOUSE_MEDZISKLAD = "Medzisklad"
 
 # Hodnoty <option value="..."> v <select id="margins_all"> podľa percenta
 # marže (zodpovedá atribútu data-margin="..." v reálnom HTML formulára).
@@ -70,9 +72,9 @@ def upload_delivery_note(
     file_path: Path,
     supplier_name: str,
     column_settings_value: str,
-    contract_option_value: str,
+    zakazka_number: str,
     subcustomer_name: str | None = None,
-    warehouse_value: str = WAREHOUSE_MEDZISKLAD,
+    warehouse_name: str = WAREHOUSE_MEDZISKLAD,
 ) -> None:
     """
     Naskladní dodací list do IC Office (Sklad -> Tovar -> Naskladniť z
@@ -84,14 +86,16 @@ def upload_delivery_note(
     `column_settings_value` - uložený preset mapovania stĺpcov CSV, líši
     sa podľa dodávateľa (Eurovat "21", Nitech "62").
 
-    `contract_option_value` - interné ID zákazky (hodnota <option> v
-    #contract_0, NIE zobrazené číslo zákazky ako "7193").
-    TODO: automatické párovanie dodacieho listu na správnu zákazku
-    (vytvorenú v order_sync.py) ešte nie je navrhnuté - túto hodnotu
-    musí zatiaľ dodať volajúci (napr. na základe ručnej kontroly).
+    `zakazka_number` - zobrazené číslo zákazky (napr. "2026/7212", presne
+    v tvare, aký vracia find_zakazka_for_subcustomer()["number"]). Pole
+    "Zákazka" vo wizarde je treeitem widget (rovnaký ako "Výber
+    dodávateľa"), nie <select> - vyhľadáva sa podľa tohto zobrazeného textu.
 
     `subcustomer_name` - meno podriadeného zákazníka, podľa ktorého sa
     určí marža (MARGIN_OVERRIDES, inak DEFAULT_MARGIN_VALUE).
+
+    `warehouse_name` - presne podľa zoznamu v poli "Sklad" (napr.
+    "Medzisklad") - tiež treeitem widget, nie <select>.
 
     Výnimky (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté):
     poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
@@ -123,8 +127,14 @@ def upload_delivery_note(
 
     page.locator("#margins_all").select_option(margin_value)
     page.locator("#margins_all").press("Tab")
-    page.locator("#contract_0").select_option(contract_option_value)
-    page.locator("#warehouse_0").select_option(warehouse_value)
+
+    page.get_by_label("Zákazka").locator("b").click()
+    page.get_by_role("treeitem", name=re.compile(re.escape(zakazka_number))).click()
+
+    page.get_by_label("Sklad").locator("b").click()
+    page.get_by_label("Sklad").click()
+    page.get_by_role("treeitem", name=warehouse_name).click()
+
     page.get_by_role("button", name="Ďalší").click()
 
     page.get_by_role("button", name="Naskladniť").click()
@@ -152,11 +162,10 @@ def find_zakazka_for_subcustomer(
     Vráti dict {contract_id, number, description} pre PRÁVE JEDNU
     nájdenú zákazku - contract_id je interné číselné ID záznamu (napr.
     "104227", z id="div104227" na .custzak elemente v riadku), number
-    je zobrazené číslo zákazky (napr. "2026/7212").
-
-    TODO: nepotvrdené, či sa toto interné contract_id zhoduje s hodnotou
-    <option> v #contract_0 vo wizarde nahrávania dodacieho listu - treba
-    overiť podľa reálneho HTML #contract_0.
+    je zobrazené číslo zákazky (napr. "2026/7212") - v tomto tvare sa
+    priamo použije ako `zakazka_number` v upload_delivery_note() (pole
+    "Zákazka" vo wizarde je treeitem widget vyhľadávaný podľa textu,
+    nie <select> podľa interného ID).
 
     Ak sa nenájde presne jedna zhoda, vyhodí ValueError - nesmie sa
     tichým odhadom priradiť dodací list k cudzej/nesprávnej zákazke
