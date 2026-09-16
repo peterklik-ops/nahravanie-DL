@@ -22,7 +22,7 @@ def send_alert(subject: str, body: str) -> None:
     msg["From"] = config.ALERT_EMAIL
     msg["To"] = config.ALERT_EMAIL
 
-    print(f"[INFO] Upozornenie pripravené na odoslanie: {subject}")
+    print(f"[INFO] Upozornenie pripravené na odoslanie: {subject}\n{body}")
     # with smtplib.SMTP("smtp.example.com", 587) as server:
     #     server.starttls()
     #     server.login(user, password)
