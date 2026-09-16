@@ -179,6 +179,9 @@ def find_zakazka_for_subcustomer(
     customer_filter = page.locator("#customer")
     customer_filter.fill(customer_name)
     customer_filter.press("Enter")
+    # Filtrovanie beží cez AJAX - počkať, kým sa tabuľka skutočne
+    # aktualizuje, inak by sa mohol prečítať ešte starý stav.
+    page.wait_for_load_state("networkidle")
 
     rows = page.locator("#database_contracts tbody tr")
     matches = []
@@ -213,6 +216,43 @@ def find_zakazka_for_subcustomer(
         )
 
     return matches[0]
+
+
+# Hodnota <option> v stĺpcovom filtri #state zodpovedajúca "Všetky" stavy
+# (potvrdené podľa reálneho HTML).
+CONTRACT_STATE_ALL = "-2"
+
+
+def order_already_has_zakazka(page: Page, order_number: str) -> bool:
+    """
+    Skontroluje v Evidencii zákaziek (naprieč VŠETKÝMI stavmi, nielen
+    "Pracuje sa"), či už existuje zákazka, ktorej stĺpec "Popis" obsahuje
+    toto číslo objednávky - buď presne v tvare z Nitechu (napr.
+    "WO260093596"), alebo v staršom ručnom tvare bez predpony "WO" (napr.
+    "260093596"), ktorý sa používal pri ručnom vytváraní zákaziek pred
+    nasadením agenta.
+
+    Bez tejto kontroly by sa pre objednávky, ktoré niekto medzičasom
+    vybavil ručne (a teda nie sú v PROCESSED_ORDERS_FILE), vytvárali
+    duplicitné zákazky - potvrdené v praxi (opakovane sa to stalo).
+    """
+    page.get_by_role("link", name=" Zákazky").click()
+    page.locator("#state").select_option(CONTRACT_STATE_ALL)
+
+    description_filter = page.locator("#description")
+    candidates = {order_number}
+    if order_number.startswith("WO"):
+        candidates.add(order_number.removeprefix("WO"))
+
+    for candidate in candidates:
+        description_filter.fill(candidate)
+        description_filter.press("Enter")
+        page.wait_for_load_state("networkidle")
+
+        if page.locator("#database_contracts tbody .custzak").count() > 0:
+            return True
+
+    return False
 
 
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:

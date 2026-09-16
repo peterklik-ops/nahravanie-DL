@@ -134,12 +134,19 @@ def run_subcustomer_order_sync_step(browser) -> None:
     try:
         nitech.login(nitech_page)
         ic_office.login(ic_page)
-        created = order_sync.sync_subcustomer_orders(nitech_page, ic_page)
+        result = order_sync.sync_subcustomer_orders(nitech_page, ic_page)
+        created = result["created"]
+        skipped_existing = result["skipped_existing"]
+
         if created:
             print(f"Vytvorených zákaziek pre podriadených zákazníkov: {len(created)}")
             for order in created:
                 print(f"  - {order['order_number']}: {order['subcustomer_name']}")
-        else:
+        if skipped_existing:
+            print(f"Preskočené (zákazka už existuje): {len(skipped_existing)}")
+            for order in skipped_existing:
+                print(f"  - {order['order_number']}: {order['subcustomer_name']}")
+        if not created and not skipped_existing:
             print("Žiadne nové objednávky podriadených zákazníkov.")
     except Exception:
         print("[CHYBA] Zlyhala synchronizácia objednávok podriadených zákazníkov:")

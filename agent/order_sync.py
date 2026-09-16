@@ -40,16 +40,24 @@ def _mark_order_processed(order_number: str) -> None:
     )
 
 
-def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dict]:
+def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> dict:
     """
     Nájde nové objednávky podriadených zákazníkov v Nitechu (tie, ktorých
     číslo objednávky ešte nie je v `PROCESSED_ORDERS_FILE`) a pre každú
-    vytvorí zákazku v IC Office. Vráti zoznam spracovaných objednávok.
+    vytvorí zákazku v IC Office - okrem prípadu, keď zákazka s týmto
+    číslom objednávky už v IC Office existuje (napr. bola vytvorená
+    ručne pred nasadením agenta, ešte pod starším tvarom čísla bez
+    predpony "WO") - taká sa len označí ako spracovaná, bez vytvorenia
+    duplicity (viď ic_office.order_already_has_zakazka()).
+
+    Vráti {"created": [...], "skipped_existing": [...]} - obe ako
+    zoznamy spracovaných objednávok.
     """
     orders = nitech.list_subcustomer_orders(nitech_page)
     processed = _load_processed_order_numbers()
 
     created: list[dict] = []
+    skipped_existing: list[dict] = []
     failed: list[tuple[dict, Exception]] = []
 
     for order in orders:
@@ -61,11 +69,15 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
             note_parts.append(order["custom_note"])
 
         try:
-            ic_office.create_order_for_subcustomer(
-                ic_office_page,
-                customer_name=order["subcustomer_name"],
-                note=" ".join(note_parts),
-            )
+            if ic_office.order_already_has_zakazka(ic_office_page, order["order_number"]):
+                skipped_existing.append(order)
+            else:
+                ic_office.create_order_for_subcustomer(
+                    ic_office_page,
+                    customer_name=order["subcustomer_name"],
+                    note=" ".join(note_parts),
+                )
+                created.append(order)
         except Exception as exc:
             # Jedna zlyhaná objednávka (napr. nezaregistrovaný podriadený
             # zákazník) nesmie zablokovať spracovanie ostatných - skúsime
@@ -74,7 +86,6 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
             continue
 
         _mark_order_processed(order["order_number"])
-        created.append(order)
 
     if failed:
         summary = "\n".join(
@@ -86,4 +97,4 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> list[dic
             summary,
         )
 
-    return created
+    return {"created": created, "skipped_existing": skipped_existing}
