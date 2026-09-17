@@ -94,8 +94,17 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
 
         link.click()
 
-        note_item = page.locator(".footer li", has_text="Poznámka:")
-        raw_note = note_item.locator("span").nth(1).inner_text() if note_item.count() > 0 else ""
+        # Po kliknutí sa čaká na skutočné načítanie detailu (môže ísť o
+        # AJAX/SPA navigáciu) - okamžitá kontrola .count() by mohla vidieť
+        # ešte prázdnu/starú stránku a poznámku podriadeného zákazníka
+        # tak nesprávne vyhodnotiť ako chýbajúcu (potvrdené v praxi na
+        # rovnakej platforme v nitech.py).
+        note_item = page.locator(".footer li", has_text="Poznámka:").first
+        try:
+            note_item.wait_for(state="visible", timeout=8000)
+            raw_note = note_item.locator("span").nth(1).inner_text()
+        except PlaywrightTimeoutError:
+            raw_note = ""
         note_info = parse_subcustomer_note(raw_note)
 
         export_link = page.get_by_role("link", name="Exportovať do CSV")
