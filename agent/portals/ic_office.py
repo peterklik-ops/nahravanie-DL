@@ -174,34 +174,46 @@ def find_zakazka_for_subcustomer(
     (reálna chyba v sklade/účtovníctve).
     """
     page.get_by_role("link", name=" Zákazky").click()
-
     page.locator("#state").select_option(CONTRACT_STATE_PRACUJE_SA)
     customer_filter = page.locator("#customer")
-    customer_filter.fill(customer_name)
-    customer_filter.press("Enter")
-    # Filtrovanie beží cez AJAX - počkať, kým sa tabuľka skutočne
-    # aktualizuje, inak by sa mohol prečítať ešte starý stav.
-    page.wait_for_load_state("networkidle")
 
-    rows = page.locator("#database_contracts tbody tr")
-    matches = []
+    def _search(name: str) -> list[dict]:
+        customer_filter.fill(name)
+        customer_filter.press("Enter")
+        # Filtrovanie beží cez AJAX - počkať, kým sa tabuľka skutočne
+        # aktualizuje, inak by sa mohol prečítať ešte starý stav.
+        page.wait_for_load_state("networkidle")
 
-    for i in range(rows.count()):
-        row = rows.nth(i)
-        custzak = row.locator(".custzak")
-        if custzak.count() == 0:
-            continue
+        rows = page.locator("#database_contracts tbody tr")
+        found = []
+        for i in range(rows.count()):
+            row = rows.nth(i)
+            custzak = row.locator(".custzak")
+            if custzak.count() == 0:
+                continue
 
-        div_id = custzak.get_attribute("id") or ""
-        contract_id = div_id.removeprefix("div")
-        if not contract_id:
-            continue
+            div_id = custzak.get_attribute("id") or ""
+            contract_id = div_id.removeprefix("div")
+            if not contract_id:
+                continue
 
-        matches.append({
-            "contract_id": contract_id,
-            "number": custzak.locator("span").inner_text().strip(),
-            "description": row.locator("td").nth(7).inner_text().strip(),
-        })
+            found.append({
+                "contract_id": contract_id,
+                "number": custzak.locator("span").inner_text().strip(),
+                "description": row.locator("td").nth(7).inner_text().strip(),
+            })
+        return found
+
+    matches = _search(customer_name)
+
+    if not matches:
+        # IC Office je zaužívaný formát "Priezvisko Meno" pre bežné osoby
+        # (na rozdiel od Nitechu, ktorý dáva "Meno Priezvisko") - skúsi sa
+        # preto aj obrátené poradie, len pri presne dvoch slovách (rovnaká
+        # logika ako v create_order_for_subcustomer/_find_customer_link...).
+        tokens = customer_name.split()
+        if len(tokens) == 2:
+            matches = _search(f"{tokens[1]} {tokens[0]}")
 
     if custom_note:
         with_matching_note = [m for m in matches if custom_note in m["description"]]
