@@ -126,8 +126,14 @@ def upload_delivery_note(
     page.get_by_role("treeitem", name=supplier_name).click()
     page.locator("#import_export_dl_modal").get_by_text("OK").click()
 
-    page.get_by_text("Vybrať súbor").click()
-    page.get_by_label("Vybrať súbor").set_input_files(str(file_path))
+    # Klik na "Vybrať súbor" spúšťa natívny OS dialóg na výber súboru
+    # (potvrdené - macOS Finder okno) - ten by ako samostatné okno
+    # operačného systému zablokoval ďalšiu automatizáciu. Zachytením cez
+    # expect_file_chooser() sa dialóg nikdy reálne nezobrazí a súbor sa
+    # nastaví priamo programovo.
+    with page.expect_file_chooser() as file_chooser_info:
+        page.get_by_text("Vybrať súbor").click()
+    file_chooser_info.value.set_files(str(file_path))
     page.get_by_role("button", name="Ďalší").click()
 
     page.locator("#columnSettings").select_option(column_settings_value)
