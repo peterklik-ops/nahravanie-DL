@@ -178,10 +178,16 @@ def find_zakazka_for_subcustomer(
     customer_filter = page.locator("#customer")
 
     def _search(name: str) -> list[dict]:
+        # Vyprázdniť filter pred hľadaním - zabráni prelínaniu s výsledkom
+        # z predchádzajúceho volania (napr. pôvodné meno -> obrátené meno
+        # hneď za sebou) - rovnaký problém, aký sme už raz našli a
+        # opravili v order_already_has_zakazka().
+        customer_filter.fill("")
+        customer_filter.press("Enter")
+        page.wait_for_load_state("networkidle")
+
         customer_filter.fill(name)
         customer_filter.press("Enter")
-        # Filtrovanie beží cez AJAX - počkať, kým sa tabuľka skutočne
-        # aktualizuje, inak by sa mohol prečítať ešte starý stav.
         page.wait_for_load_state("networkidle")
 
         rows = page.locator("#database_contracts tbody tr")
@@ -190,6 +196,14 @@ def find_zakazka_for_subcustomer(
             row = rows.nth(i)
             custzak = row.locator(".custzak")
             if custzak.count() == 0:
+                continue
+
+            # Overiť, že stĺpec "Zákazník" naozaj obsahuje hľadané meno -
+            # nielen spoliehať sa na to, že filter/tabuľka je už
+            # aktualizovaná (rovnaká poistka proti prečítaniu starého
+            # stavu ako v order_already_has_zakazka()).
+            zakaznik_text = row.locator("td").nth(3).inner_text().strip()
+            if name not in zakaznik_text:
                 continue
 
             div_id = custzak.get_attribute("id") or ""
