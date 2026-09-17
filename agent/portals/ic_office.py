@@ -112,14 +112,22 @@ def upload_delivery_note(
     margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
     margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
-    # Rozbaľovacie menu "Sklady" sa niekedy nerozbalí spoľahlivo len
-    # kliknutím (najmä keď sa naň prichádza z inej sekcie, nie priamo po
-    # prihlásení) - potvrdené v praxi (30s timeout na "Tovar"). Explicitný
-    # hover pred kliknutím vynúti zobrazenie podmenu.
+    # Rozbaľovacie menu "Sklady" sa nerozbaľuje spoľahlivo - potvrdené v
+    # praxi opakovane (niekedy stačí hover+klik, inokedy nie, bez
+    # zjavného vzoru). Preto sa skúša niekoľkokrát za sebou, kým sa
+    # "Tovar" reálne nezobrazí, namiesto jedného pokusu.
     sklady_link = page.locator("a").filter(has_text="Sklady").first
-    sklady_link.hover()
-    sklady_link.click()
-    page.get_by_role("link", name="Tovar").click()
+    tovar_link = page.get_by_role("link", name="Tovar")
+    for _ in range(5):
+        sklady_link.hover()
+        sklady_link.click()
+        try:
+            tovar_link.wait_for(state="visible", timeout=4000)
+            break
+        except PlaywrightTimeoutError:
+            continue
+
+    tovar_link.click()
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
     page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa").click()
