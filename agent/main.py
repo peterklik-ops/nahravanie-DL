@@ -98,9 +98,14 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                     # (bežné dodacie listy, "servis", vratka so zápornou
                     # hodnotou) zatiaľ nemajú automatické určenie zákazky
                     # ani skladu - dohodnuté, že sa k tomu vrátime neskôr.
+                    #
+                    # Vypísať surovú poznámku - ak by parser subcustomer_name
+                    # nesprávne nevyťažil aj tam, kde poznámka reálne je,
+                    # toto je jediný spôsob, ako to spätne odhaliť.
                     raise NotImplementedError(
-                        f"{file_path.name} nemá poznámku podriadeného zákazníka - "
-                        "automatické priradenie zatiaľ rieši len tento prípad."
+                        f"{file_path.name} nemá poznámku podriadeného zákazníka "
+                        f"(raw_note={item.get('raw_note')!r}) - automatické "
+                        "priradenie zatiaľ rieši len tento prípad."
                     )
 
                 zakazka = ic_office.find_zakazka_for_subcustomer(
