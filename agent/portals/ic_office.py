@@ -112,7 +112,13 @@ def upload_delivery_note(
     margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
     margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
-    page.locator("a").filter(has_text="Sklady").first.click()
+    # Rozbaľovacie menu "Sklady" sa niekedy nerozbalí spoľahlivo len
+    # kliknutím (najmä keď sa naň prichádza z inej sekcie, nie priamo po
+    # prihlásení) - potvrdené v praxi (30s timeout na "Tovar"). Explicitný
+    # hover pred kliknutím vynúti zobrazenie podmenu.
+    sklady_link = page.locator("a").filter(has_text="Sklady").first
+    sklady_link.hover()
+    sklady_link.click()
     page.get_by_role("link", name="Tovar").click()
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
