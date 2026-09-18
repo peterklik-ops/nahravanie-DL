@@ -221,22 +221,37 @@ def find_zakazka_for_subcustomer(
         return found
 
     def _search(name: str) -> list[dict]:
+        before_snapshot = tuple(r["contract_id"] for r in _read_rows())
+
         customer_filter.fill(name)
         customer_filter.press("Enter")
 
         # AJAX filtrovanie tejto tabuľky sa ukázalo ako nespoľahlivé na
         # pevné čakanie (networkidle aj reset+wait) - potvrdené v praxi
         # nekonzistentnými výsledkami (0 a 2 zhody pre to isté meno v tom
-        # istom behu). Namiesto hádania správneho času sa preto opakovane
-        # číta obsah tabuľky, kým sa dva razy za sebou nezhoduje (t.j.
-        # výsledky sa naozaj ustálili).
+        # istom behu). Príčina: ak sa tabuľka chvíľu vôbec nezmení (kým
+        # AJAX odpoveď ešte len letí), predošlý polling to mylne
+        # vyhodnotil ako "ustálené" a vrátil starý stav. Teraz sa preto
+        # najprv čaká, kým sa obsah SKUTOČNE ZMENÍ oproti stavu pred
+        # hľadaním, a až potom sa kontroluje ustálenie (2x rovnaký obsah
+        # za sebou).
         deadline = time.monotonic() + 8
-        last_snapshot = None
+        changed = False
+        last_snapshot = before_snapshot
         stable_streak = 0
         rows: list[dict] = []
         while time.monotonic() < deadline:
             rows = _read_rows()
             snapshot = tuple(r["contract_id"] for r in rows)
+
+            if not changed:
+                if snapshot != before_snapshot:
+                    changed = True
+                    stable_streak = 1
+                last_snapshot = snapshot
+                page.wait_for_timeout(200)
+                continue
+
             if snapshot == last_snapshot:
                 stable_streak += 1
                 if stable_streak >= 2:
@@ -244,7 +259,7 @@ def find_zakazka_for_subcustomer(
             else:
                 stable_streak = 0
             last_snapshot = snapshot
-            page.wait_for_timeout(250)
+            page.wait_for_timeout(200)
 
         # Overiť, že stĺpec "Zákazník" naozaj obsahuje hľadané meno -
         # nielen spoliehať sa na to, že filter je nastavený správne.
