@@ -10,6 +10,7 @@ Prihlásenie a vytvorenie zákazky pre podriadeného zákazníka sú hotové
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
@@ -197,33 +198,13 @@ def find_zakazka_for_subcustomer(
     page.locator("#state").select_option(CONTRACT_STATE_PRACUJE_SA)
     customer_filter = page.locator("#customer")
 
-    def _search(name: str) -> list[dict]:
-        # Vyprázdniť filter pred hľadaním - zabráni prelínaniu s výsledkom
-        # z predchádzajúceho volania (napr. pôvodné meno -> obrátené meno
-        # hneď za sebou) - rovnaký problém, aký sme už raz našli a
-        # opravili v order_already_has_zakazka().
-        customer_filter.fill("")
-        customer_filter.press("Enter")
-        page.wait_for_load_state("networkidle")
-
-        customer_filter.fill(name)
-        customer_filter.press("Enter")
-        page.wait_for_load_state("networkidle")
-
+    def _read_rows() -> list[dict]:
         rows = page.locator("#database_contracts tbody tr")
         found = []
         for i in range(rows.count()):
             row = rows.nth(i)
             custzak = row.locator(".custzak")
             if custzak.count() == 0:
-                continue
-
-            # Overiť, že stĺpec "Zákazník" naozaj obsahuje hľadané meno -
-            # nielen spoliehať sa na to, že filter/tabuľka je už
-            # aktualizovaná (rovnaká poistka proti prečítaniu starého
-            # stavu ako v order_already_has_zakazka()).
-            zakaznik_text = row.locator("td").nth(3).inner_text().strip()
-            if name not in zakaznik_text:
                 continue
 
             div_id = custzak.get_attribute("id") or ""
@@ -233,10 +214,41 @@ def find_zakazka_for_subcustomer(
 
             found.append({
                 "contract_id": contract_id,
+                "zakaznik": row.locator("td").nth(3).inner_text().strip(),
                 "number": custzak.locator("span").inner_text().strip(),
                 "description": row.locator("td").nth(7).inner_text().strip(),
             })
         return found
+
+    def _search(name: str) -> list[dict]:
+        customer_filter.fill(name)
+        customer_filter.press("Enter")
+
+        # AJAX filtrovanie tejto tabuľky sa ukázalo ako nespoľahlivé na
+        # pevné čakanie (networkidle aj reset+wait) - potvrdené v praxi
+        # nekonzistentnými výsledkami (0 a 2 zhody pre to isté meno v tom
+        # istom behu). Namiesto hádania správneho času sa preto opakovane
+        # číta obsah tabuľky, kým sa dva razy za sebou nezhoduje (t.j.
+        # výsledky sa naozaj ustálili).
+        deadline = time.monotonic() + 8
+        last_snapshot = None
+        stable_streak = 0
+        rows: list[dict] = []
+        while time.monotonic() < deadline:
+            rows = _read_rows()
+            snapshot = tuple(r["contract_id"] for r in rows)
+            if snapshot == last_snapshot:
+                stable_streak += 1
+                if stable_streak >= 2:
+                    break
+            else:
+                stable_streak = 0
+            last_snapshot = snapshot
+            page.wait_for_timeout(250)
+
+        # Overiť, že stĺpec "Zákazník" naozaj obsahuje hľadané meno -
+        # nielen spoliehať sa na to, že filter je nastavený správne.
+        return [r for r in rows if name in r["zakaznik"]]
 
     matches = _search(customer_name)
 
