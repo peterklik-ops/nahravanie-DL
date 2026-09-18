@@ -148,6 +148,23 @@ def upload_delivery_note(
     page.locator("#columnSettings").select_option(column_settings_value)
     page.get_by_role("button", name="Ďalší").click()
 
+    # IC Office niekedy zobrazí varovanie "Zadané číslo dodacieho listu
+    # už v sklade existuje!" (potvrdené v praxi) - ak áno, dodací list
+    # už bol nahraný iným spôsobom (napr. ručne). Nesmie sa preklikať
+    # cez toto varovanie ďalej - hrozila by reálna duplicita v sklade.
+    duplicate_warning = page.get_by_text("Zadané číslo dodacieho listu už v sklade existuje")
+    try:
+        duplicate_warning.wait_for(state="visible", timeout=3000)
+    except PlaywrightTimeoutError:
+        pass
+    else:
+        page.get_by_role("button", name="OK").click()
+        raise ValueError(
+            "IC Office nahlásil, že dodací list s týmto číslom už v sklade "
+            "existuje (pravdepodobne bol už nahraný iným spôsobom) - "
+            "vyžaduje ručnú kontrolu, upload bol bezpečne prerušený."
+        )
+
     page.locator("#margins_all").select_option(margin_value)
     page.locator("#margins_all").press("Tab")
 
