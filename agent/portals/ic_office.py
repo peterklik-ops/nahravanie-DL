@@ -212,8 +212,8 @@ def find_zakazka_for_subcustomer(
     (reálna chyba v sklade/účtovníctve).
     """
     page.get_by_role("link", name=" Zákazky").click()
-    page.locator("#state").select_option(CONTRACT_STATE_PRACUJE_SA)
     customer_filter = page.locator("#customer")
+    state_filter = page.locator("#state")
 
     def _read_rows() -> list[dict]:
         rows = page.locator("#database_contracts tbody tr")
@@ -237,21 +237,14 @@ def find_zakazka_for_subcustomer(
             })
         return found
 
-    def _search(name: str) -> list[dict]:
-        before_snapshot = tuple(r["contract_id"] for r in _read_rows())
-
-        customer_filter.fill(name)
-        customer_filter.press("Enter")
-
+    def _wait_for_change_then_stable(before_snapshot: tuple) -> list[dict]:
         # AJAX filtrovanie tejto tabuľky sa ukázalo ako nespoľahlivé na
         # pevné čakanie (networkidle aj reset+wait) - potvrdené v praxi
-        # nekonzistentnými výsledkami (0 a 2 zhody pre to isté meno v tom
-        # istom behu). Príčina: ak sa tabuľka chvíľu vôbec nezmení (kým
-        # AJAX odpoveď ešte len letí), predošlý polling to mylne
-        # vyhodnotil ako "ustálené" a vrátil starý stav. Teraz sa preto
-        # najprv čaká, kým sa obsah SKUTOČNE ZMENÍ oproti stavu pred
-        # hľadaním, a až potom sa kontroluje ustálenie (2x rovnaký obsah
-        # za sebou).
+        # nekonzistentnými výsledkami pre to isté hľadanie v tom istom
+        # behu. Preto sa najprv čaká, kým sa obsah SKUTOČNE ZMENÍ oproti
+        # stavu pred akciou, a až potom sa kontroluje ustálenie (2x
+        # rovnaký obsah za sebou) - pevné čakanie mohlo mylne prečítať
+        # ešte neaktualizovaný stav ako "hotový".
         deadline = time.monotonic() + 8
         changed = False
         last_snapshot = before_snapshot
@@ -277,6 +270,23 @@ def find_zakazka_for_subcustomer(
                 stable_streak = 0
             last_snapshot = snapshot
             page.wait_for_timeout(200)
+
+        return rows
+
+    def _search(name: str) -> list[dict]:
+        # #state sa po AJAX prekreslení tabuľky (napr. po predošlom
+        # hľadaní podľa mena) mohol ticho resetovať späť na "Všetky" -
+        # potvrdené v praxi (počet zhôd narastal medzi behmi bez
+        # zjavného dôvodu, až na nezmyselných 15). Preto sa nastavuje
+        # nanovo pri KAŽDOM hľadaní, nie iba raz na začiatku.
+        before_state = tuple(r["contract_id"] for r in _read_rows())
+        state_filter.select_option(CONTRACT_STATE_PRACUJE_SA)
+        _wait_for_change_then_stable(before_state)
+
+        before_customer = tuple(r["contract_id"] for r in _read_rows())
+        customer_filter.fill(name)
+        customer_filter.press("Enter")
+        rows = _wait_for_change_then_stable(before_customer)
 
         # Overiť, že stĺpec "Zákazník" naozaj obsahuje hľadané meno -
         # nielen spoliehať sa na to, že filter je nastavený správne.
