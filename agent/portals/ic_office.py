@@ -145,7 +145,15 @@ def upload_delivery_note(
     file_chooser_info.value.set_files(str(file_path))
     page.get_by_role("button", name="Ďalší").click()
 
+    # Vyplnenie jednotlivých stĺpcov (napr. povinné "Kód tovaru") podľa
+    # uloženého nastavenia rieši jQuery .change() handler na #columnSettings
+    # (číta atribút data-set z vybranej <option> a nastavuje per-stĺpec
+    # selecty) - natívna "change" udalosť z select_option() ho spoľahlivo
+    # nevyvolala (potvrdené v praxi - "Kód tovaru je povinná položka").
+    # Explicitný jQuery trigger to zaručí bez ohľadu na to, prečo natívna
+    # udalosť zlyhala.
     page.locator("#columnSettings").select_option(column_settings_value)
+    page.evaluate("$('#columnSettings').trigger('change')")
     page.get_by_role("button", name="Ďalší").click()
 
     # IC Office niekedy zobrazí varovanie "Zadané číslo dodacieho listu
