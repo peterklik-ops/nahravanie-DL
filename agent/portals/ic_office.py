@@ -121,6 +121,7 @@ def upload_delivery_note(
     subcustomer_name: str | None = None,
     warehouse_name: str = WAREHOUSE_MEDZISKLAD,
     margin_percent: float | None = None,
+    set_margin: bool = True,
 ) -> None:
     """
     Naskladní dodací list do IC Office (Sklad -> Tovar -> Naskladniť z
@@ -151,21 +152,33 @@ def upload_delivery_note(
 
     `margin_percent` - ak je zadaný, použije sa priamo (napr.
     REGULAR_MARGIN_PERCENT pre bežné dodacie listy) namiesto odvodenia
-    z `subcustomer_name`.
+    z `subcustomer_name`. Irelevantné, ak `set_margin` je False.
 
-    Výnimka (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté): záporná
-    hodnota dodacieho listu (vratka/dobropis) - tovar ide do skladu
-    "Vratky" alebo "Reklamacie", bez marže, cez iný vstupný bod wizardu
-    ("Nitech - dobropis"/"Eurovat - dobropis") - čaká sa na doplnenie.
+    `set_margin` - ak False, krok nastavenia marže (#margins_all) sa
+    celkom preskočí bez akéhokoľvek dotyku (potvrdené v praxi cez
+    playwright codegen pre vratku/dobropis - marža sa tam nenastavuje
+    vôbec, nie iba na 0 %). Používa sa pre záporné dodacie listy
+    (vratka/dobropis, uznaná reklamácia).
+
+    Poznámka k vratke/dobropisu (záporná hodnota dodacieho listu):
+    vstupný bod aj dodávateľ sú ROVNAKÉ ako pri bežnom dodacom liste
+    (potvrdené v praxi - "Naskladniť z dodacieho listu", "EURO-VAT"), mení
+    sa iba `column_settings_value` (preset "NITECH DOBROPIS"/"EUROVAT
+    Dobropis"), `set_margin=False` a `warehouse_name` ("Vratky", alebo
+    "Reklamacie" pri poznámke "uznaná reklamácia"). Po nahratí treba
+    RUČNE skontrolovať v "Pohyby tovaru / Dodacie listy" (Náhľad/editácia),
+    že nahraté diely majú mínusový príznak - toto agent nerobí automaticky.
 
     Poznámka: ak IC Office pri nahrávaní zobrazí varovanie, že dodací
     list s týmto číslom už bol nahraný (stalo sa to raz pri ručnom
     teste), táto funkcia to NERIEŠI automaticky - to by sa nemalo stať,
     keďže download_new_delivery_notes() už sleduje spracované súbory.
     """
-    if margin_percent is None:
-        margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
-    margin_value = MARGIN_OPTION_VALUES[margin_percent]
+    margin_value = None
+    if set_margin:
+        if margin_percent is None:
+            margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
+        margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
     # Rozbaľovacie menu "Sklady" sa nerozbaľuje spoľahlivo - potvrdené v
     # praxi opakovane (niekedy stačí hover+klik, inokedy nie, bez
@@ -264,8 +277,9 @@ def upload_delivery_note(
             "vyžaduje ručnú kontrolu, upload bol bezpečne prerušený."
         )
 
-    page.locator("#margins_all").select_option(margin_value)
-    page.locator("#margins_all").press("Tab")
+    if set_margin:
+        page.locator("#margins_all").select_option(margin_value)
+        page.locator("#margins_all").press("Tab")
 
     # Ak zakazka_number nie je zadané (poznámka "sklad"/"servis"), krok
     # výberu zákazky sa celkom preskočí - tovar ide priamo na sklad.

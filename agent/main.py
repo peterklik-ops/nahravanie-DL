@@ -47,6 +47,19 @@ COLUMN_SETTINGS = {
     "Eurovat": "21",
 }
 
+# Preset mapovania stĺpcov CSV pre vratku/dobropis (záporná hodnota
+# dodacieho listu) - iný preset ("NITECH DOBROPIS"/"EUROVAT Dobropis"),
+# ale rovnaký dodávateľ (SUPPLIER_NAMES) aj vstupný bod ako pri bežnom
+# dodacom liste - potvrdené v praxi cez playwright codegen.
+DOBROPIS_COLUMN_SETTINGS = {
+    "Nitech": "74",
+    "Eurovat": "89",
+}
+
+# Poznámka na zápornom dodacom liste, ktorá mení cieľový sklad z "Vratky"
+# na "Reklamacie" (uznaná reklamácia dodávateľovi).
+UZNANA_REKLAMACIA_NOTE = "uznaná reklamácia"
+
 
 def run_delivery_notes_step(browser) -> list[tuple[str, dict]]:
     """
@@ -95,18 +108,32 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
             raw_note = item.get("raw_note") or ""
             try:
                 if item.get("is_negative_value"):
-                    # Vratka/dobropis (záporná hodnota) - iný vstupný bod
-                    # wizardu (dodávateľ "Nitech - dobropis"/"Eurovat -
-                    # dobropis", sklad "Vratky"/"Reklamacie", bez marže) -
-                    # zatiaľ NEIMPLEMENTOVANÉ, dohodnuté že sa doplní
-                    # neskôr. Táto kontrola musí byť PRVÁ, aby sa taký
+                    # Vratka/dobropis (záporná hodnota) - potvrdené v praxi
+                    # cez playwright codegen: rovnaký vstupný bod aj
+                    # dodávateľ ako pri bežnom dodacom liste, mení sa iba
+                    # preset stĺpcov (DOBROPIS_COLUMN_SETTINGS), marža sa
+                    # vôbec nenastavuje (set_margin=False) a sklad je
+                    # "Vratky", alebo "Reklamacie" pri poznámke "uznaná
+                    # reklamácia". Táto kontrola musí byť PRVÁ, aby sa taký
                     # dodací list nikdy neomylom nespracoval cez bežnú
                     # (kladnú) cestu nižšie.
-                    raise NotImplementedError(
-                        f"{file_path.name} má zápornú hodnotu (vratka/dobropis, "
-                        f"raw_note={raw_note!r}) - automatické spracovanie "
-                        "zatiaľ nie je implementované, vyžaduje ručnú kontrolu."
+                    is_reklamacia = UZNANA_REKLAMACIA_NOTE in raw_note.strip().lower()
+                    warehouse_name = "Reklamacie" if is_reklamacia else "Vratky"
+                    ic_office.upload_delivery_note(
+                        page,
+                        file_path,
+                        supplier_name=SUPPLIER_NAMES[source_name],
+                        column_settings_value=DOBROPIS_COLUMN_SETTINGS[source_name],
+                        zakazka_number=None,
+                        warehouse_name=warehouse_name,
+                        set_margin=False,
                     )
+                    print(
+                        f"[{source_name}] Nahraný {file_path.name} -> sklad {warehouse_name} "
+                        "(vratka/dobropis) - OVERTE RUČNE v Pohyby tovaru / Dodacie listy, "
+                        "že diely majú mínusový príznak!"
+                    )
+                    continue
 
                 if subcustomer_name:
                     zakazka = ic_office.find_zakazka_for_subcustomer(
