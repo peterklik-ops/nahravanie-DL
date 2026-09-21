@@ -214,7 +214,13 @@ def upload_delivery_note(
     page.locator("#margins_all").press("Tab")
 
     page.get_by_label("Zákazka").locator("b").click()
-    page.get_by_role("treeitem", name=re.compile(re.escape(zakazka_number))).click()
+    # Playwright interne serializuje regex vzor do tvaru `/vzor/` - keďže
+    # zakazka_number obsahuje "/" (napr. "2026/7285"), neescapovaný znak
+    # "/" rozbil parsovanie selektora (potvrdené v praxi -
+    # InvalidSelectorError). "/" preto treba escapovať explicitne, keďže
+    # re.escape() ho nechá bez zmeny (v Pythone nie je regex špeciálny znak).
+    zakazka_pattern = re.escape(zakazka_number).replace("/", r"\/")
+    page.get_by_role("treeitem", name=re.compile(zakazka_pattern)).click()
 
     page.get_by_label("Sklad").locator("b").click()
     page.get_by_label("Sklad").click()
