@@ -28,10 +28,23 @@ def login(page: Page) -> None:
 
 
 # Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
-# aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené). Pole
-# "Sklad" vo wizarde nahrávania je treeitem widget (rovnaký ako "Výber
-# dodávateľa"), nie <select> - preto ide o zobrazený názov, nie ID.
+# aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
 WAREHOUSE_MEDZISKLAD = "Medzisklad"
+
+# Hodnoty <option value="..."> v <select id="warehouse_all"> (Krok 3 -
+# Výber dát a skladov) podľa reálneho HTML - je to obyčajný <select>
+# zabalený v select2 (rovnaký vzor ako #margins_all), NIE treeitem widget
+# (na rozdiel od poľa "Zákazka" o krok skôr vo wizarde - potvrdené v praxi,
+# pôvodný predpoklad bol nesprávny).
+WAREHOUSE_OPTION_VALUES = {
+    "Medzisklad": "231",
+    "Poškodený tovar, neuznané reklamácie": "285",
+    "Predaj ND": "392",
+    "Reklamacie": "249",
+    "Servis": "282",
+    "Sklad": "256",
+    "Vratky": "248",
+}
 
 # Hodnoty <option value="..."> v <select id="margins_all"> podľa percenta
 # marže (zodpovedá atribútu data-margin="..." v reálnom HTML formulára).
@@ -98,7 +111,8 @@ def upload_delivery_note(
     určí marža (MARGIN_OVERRIDES, inak DEFAULT_MARGIN_VALUE).
 
     `warehouse_name` - presne podľa zoznamu v poli "Sklad" (napr.
-    "Medzisklad") - tiež treeitem widget, nie <select>.
+    "Medzisklad") - <select id="warehouse_all"> zabalený v select2
+    (rovnaký vzor ako #margins_all), NIE treeitem widget.
 
     Výnimky (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté):
     poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
@@ -222,9 +236,7 @@ def upload_delivery_note(
     zakazka_pattern = re.escape(zakazka_number).replace("/", r"\/")
     page.get_by_role("treeitem", name=re.compile(zakazka_pattern)).click()
 
-    page.get_by_label("Sklad").locator("b").click()
-    page.get_by_label("Sklad").click()
-    page.get_by_role("treeitem", name=warehouse_name).click()
+    page.locator("#warehouse_all").select_option(WAREHOUSE_OPTION_VALUES[warehouse_name])
 
     page.get_by_role("button", name="Ďalší").click()
 
