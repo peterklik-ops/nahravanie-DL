@@ -148,12 +148,33 @@ def upload_delivery_note(
     # Vyplnenie jednotlivých stĺpcov (napr. povinné "Kód tovaru") podľa
     # uloženého nastavenia rieši jQuery .change() handler na #columnSettings
     # (číta atribút data-set z vybranej <option> a nastavuje per-stĺpec
-    # selecty) - natívna "change" udalosť z select_option() ho spoľahlivo
-    # nevyvolala (potvrdené v praxi - "Kód tovaru je povinná položka").
-    # Explicitný jQuery trigger to zaručí bez ohľadu na to, prečo natívna
-    # udalosť zlyhala.
-    page.locator("#columnSettings").select_option(column_settings_value)
-    page.evaluate("$('#columnSettings').trigger('change')")
+    # selecty). Ani natívna "change" udalosť (select_option()), ani
+    # $(...).trigger('change') ho spoľahlivo nevyvolali - potvrdené v
+    # praxi opakovane ("Kód tovaru je povinná položka"). #columnSettings
+    # je súčasť Nette AJAX snippetu (#snippet--columns-settings), ktorý sa
+    # mohol medzitým prekresliť a handler sa neprepojil na aktuálny prvok.
+    #
+    # Namiesto spoliehania sa na event handler zopakujeme priamo tú istú
+    # logiku, akú handler vykonáva (podľa reálneho zdrojového kódu) -
+    # nastavíme jednotlivé stĺpce ručne cez JS.
+    page.evaluate(
+        """(value) => {
+            const select = document.querySelector('#columnSettings');
+            select.value = value;
+            const option = select.options[select.selectedIndex];
+            const data = JSON.parse(option.dataset.set);
+            document.querySelectorAll('#table_columns tbody tr#data').forEach((row) => {
+                const idInput = row.querySelector('td#column_id input');
+                const fileSelect = row.querySelector('td#column_file select');
+                if (!idInput || !fileSelect) return;
+                const match = data.find((d) => d.column_id === idInput.value);
+                if (match) {
+                    fileSelect.value = match.column_file;
+                }
+            });
+        }""",
+        column_settings_value,
+    )
     page.get_by_role("button", name="Ďalší").click()
 
     # IC Office niekedy zobrazí varovanie "Zadané číslo dodacieho listu
