@@ -157,6 +157,22 @@ def upload_delivery_note(
     # Namiesto spoliehania sa na event handler zopakujeme priamo tú istú
     # logiku, akú handler vykonáva (podľa reálneho zdrojového kódu) -
     # nastavíme jednotlivé stĺpce ručne cez JS.
+    #
+    # #columnSettings je súčasť Nette AJAX snippetu, ktorý sa po kliknutí
+    # na "Ďalší" ešte prekresľuje - `select.options[select.selectedIndex]`
+    # bol raz `undefined`, čo znamená, že požadovaná <option> (napr.
+    # value="62") v tej chvíli v DOM ešte neexistovala (potvrdené v praxi -
+    # "Cannot read properties of undefined (reading 'dataset')"). Preto sa
+    # najprv čaká, kým sa táto <option> reálne objaví, rovnako ako pri
+    # iných AJAX snippetoch v tomto module.
+    page.wait_for_function(
+        """(value) => {
+            const select = document.querySelector('#columnSettings');
+            return !!select && Array.from(select.options).some((o) => o.value === value);
+        }""",
+        column_settings_value,
+        timeout=8000,
+    )
     page.evaluate(
         """(value) => {
             const select = document.querySelector('#columnSettings');
