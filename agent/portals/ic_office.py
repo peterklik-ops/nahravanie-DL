@@ -170,7 +170,7 @@ def upload_delivery_note(
             const select = document.querySelector('#columnSettings');
             return !!select && Array.from(select.options).some((o) => o.value === value);
         }""",
-        column_settings_value,
+        arg=column_settings_value,
         timeout=8000,
     )
     page.evaluate(
