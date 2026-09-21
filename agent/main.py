@@ -206,8 +206,16 @@ def main() -> None:
         browser = p.chromium.launch(headless=config.HEADLESS)
         try:
             files = run_delivery_notes_step(browser)
-            run_upload_step(browser, files)
+            # Zákazka pre podriadeného zákazníka musí existovať PRED
+            # nahrávaním jeho dodacích listov - ak by sa nová objednávka aj
+            # jej prvý dodací list objavili v tom istom behu, upload by
+            # zákazku nenašiel (potvrdené v praxi - "POTIS s.r.o." malo 0
+            # zhôd, lebo run_upload_step bežal pred vytvorením zákazky).
+            # Keďže sa dodací list po stiahnutí označí ako spracovaný bez
+            # ohľadu na výsledok uploadu, takéto zlyhanie by sa už nikdy
+            # samo neopakovalo - preto poradie krokov musí byť opačné.
             run_subcustomer_order_sync_step(browser)
+            run_upload_step(browser, files)
             run_price_check_step(browser)
         finally:
             browser.close()
