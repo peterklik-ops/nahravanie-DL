@@ -236,7 +236,10 @@ def upload_delivery_note(
     zakazka_pattern = re.escape(zakazka_number).replace("/", r"\/")
     page.get_by_role("treeitem", name=re.compile(zakazka_pattern)).click()
 
-    page.locator("#warehouse_all").select_option(WAREHOUSE_OPTION_VALUES[warehouse_name])
+    # id="warehouse_all" má aj obalový <th> tabuľky aj samotný <select> -
+    # #warehouse_all preto nie je jednoznačný (potvrdené v praxi - strict
+    # mode violation, 2 zhody).
+    page.locator("select#warehouse_all").select_option(WAREHOUSE_OPTION_VALUES[warehouse_name])
 
     page.get_by_role("button", name="Ďalší").click()
 
