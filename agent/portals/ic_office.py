@@ -112,6 +112,47 @@ def _zakazka_search_pattern(zakazka_number: str) -> str:
     return r"\/" + re.escape(zakazka_number) + r"(?!\d)"
 
 
+def _click_next_checking_duplicate_warning(page: Page) -> None:
+    """
+    Klikne na tlačidlo "Ďalší" a ošetrí varovanie "Zadané číslo dodacieho
+    listu už v sklade existuje!" - IC Office ho zobrazuje NEKONZISTENTNE:
+    niekedy ako samostatný krok PO úspešnom kliknutí (potvrdené v praxi po
+    kroku nastavenia stĺpcov), inokedy AKO PRIAMY DÔSLEDOK samotného
+    kliknutia - swal-overlay modal sa objaví okamžite a blokuje ten istý
+    klik (potvrdené v praxi po kroku výberu skladu/zákazky - spôsobovalo
+    to 30s nekonečný retry namiesto rozpoznania varovania). Nesmie sa cez
+    toto varovanie prekliknúť ďalej - hrozila by reálna duplicita v sklade.
+    """
+    duplicate_warning = page.get_by_text(
+        "Zadané číslo dodacieho listu už v sklade existuje"
+    ).first
+
+    def _raise_duplicate_error():
+        page.get_by_role("button", name="OK").click()
+        raise ValueError(
+            "IC Office nahlásil, že dodací list s týmto číslom už v sklade "
+            "existuje (pravdepodobne bol už nahraný iným spôsobom) - "
+            "vyžaduje ručnú kontrolu, upload bol bezpečne prerušený."
+        )
+
+    try:
+        page.get_by_role("button", name="Ďalší").click(timeout=5000)
+    except PlaywrightTimeoutError as click_timeout:
+        try:
+            duplicate_warning.wait_for(state="visible", timeout=2000)
+        except PlaywrightTimeoutError:
+            raise click_timeout
+        _raise_duplicate_error()
+        return
+
+    try:
+        duplicate_warning.wait_for(state="visible", timeout=3000)
+    except PlaywrightTimeoutError:
+        pass
+    else:
+        _raise_duplicate_error()
+
+
 def upload_delivery_note(
     page: Page,
     file_path: Path,
@@ -258,24 +299,7 @@ def upload_delivery_note(
         }""",
         column_settings_value,
     )
-    page.get_by_role("button", name="Ďalší").click()
-
-    # IC Office niekedy zobrazí varovanie "Zadané číslo dodacieho listu
-    # už v sklade existuje!" (potvrdené v praxi) - ak áno, dodací list
-    # už bol nahraný iným spôsobom (napr. ručne). Nesmie sa preklikať
-    # cez toto varovanie ďalej - hrozila by reálna duplicita v sklade.
-    duplicate_warning = page.get_by_text("Zadané číslo dodacieho listu už v sklade existuje")
-    try:
-        duplicate_warning.wait_for(state="visible", timeout=3000)
-    except PlaywrightTimeoutError:
-        pass
-    else:
-        page.get_by_role("button", name="OK").click()
-        raise ValueError(
-            "IC Office nahlásil, že dodací list s týmto číslom už v sklade "
-            "existuje (pravdepodobne bol už nahraný iným spôsobom) - "
-            "vyžaduje ručnú kontrolu, upload bol bezpečne prerušený."
-        )
+    _click_next_checking_duplicate_warning(page)
 
     if set_margin:
         page.locator("#margins_all").select_option(margin_value)
@@ -294,7 +318,7 @@ def upload_delivery_note(
     # mode violation, 2 zhody).
     page.locator("select#warehouse_all").select_option(WAREHOUSE_OPTION_VALUES[warehouse_name])
 
-    page.get_by_role("button", name="Ďalší").click()
+    _click_next_checking_duplicate_warning(page)
 
     page.get_by_role("button", name="Naskladniť").click()
     page.locator("#importGoods").get_by_text("Áno").click()
