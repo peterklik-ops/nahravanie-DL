@@ -82,15 +82,45 @@ MARGIN_PERCENT_OVERRIDES = {
     "Marek Jaszay": 10,
 }
 
+# Marža pre bežné (nie podriadený zákazník) dodacie listy - dohodnuté,
+# platí jednotne pre všetky tri prípady (zákazka podľa čísla v poznámke,
+# poznámka "sklad", poznámka "servis").
+REGULAR_MARGIN_PERCENT = 47
+
+# Zobrazené názvy skladov použité pri bežných dodacích listoch bez
+# zákazky - presne podľa WAREHOUSE_OPTION_VALUES.
+WAREHOUSE_SKLAD = "Sklad"
+WAREHOUSE_SERVIS = "Servis"
+
+
+def _zakazka_search_pattern(zakazka_number: str) -> str:
+    """
+    Zostaví regex vzor na vyhľadanie zákazky v treeitem strome poľa
+    "Zákazka". Pri plnom tvare (napr. "2026/7285", ako ho vracia
+    find_zakazka_for_subcustomer()["number"]) sa iba escapuje "/" (viď
+    upload_delivery_note - Playwright interne serializuje regex do tvaru
+    /vzor/, neescapovaný "/" rozbíja parsovanie).
+
+    Pri holom čísle (napr. "7276", vyťaženom priamo z poznámky bežného
+    dodacieho listu podľa classify_regular_note()) sa navyše vyžaduje, aby
+    bezprostredne nasledovalo po "/" a nepokračovalo ďalšou číslicou - inak
+    by sa napr. "726" mylne zhodovalo aj so zákazkou "2026/7269" ako
+    podreťazec.
+    """
+    if "/" in zakazka_number:
+        return re.escape(zakazka_number).replace("/", r"\/")
+    return r"\/" + re.escape(zakazka_number) + r"(?!\d)"
+
 
 def upload_delivery_note(
     page: Page,
     file_path: Path,
     supplier_name: str,
     column_settings_value: str,
-    zakazka_number: str,
+    zakazka_number: str | None = None,
     subcustomer_name: str | None = None,
     warehouse_name: str = WAREHOUSE_MEDZISKLAD,
+    margin_percent: float | None = None,
 ) -> None:
     """
     Naskladní dodací list do IC Office (Sklad -> Tovar -> Naskladniť z
@@ -103,28 +133,38 @@ def upload_delivery_note(
     sa podľa dodávateľa (Eurovat "21", Nitech "62").
 
     `zakazka_number` - zobrazené číslo zákazky (napr. "2026/7212", presne
-    v tvare, aký vracia find_zakazka_for_subcustomer()["number"]). Pole
+    v tvare, aký vracia find_zakazka_for_subcustomer()["number"]), ALEBO
+    holé číslo vyťažené z poznámky bežného dodacieho listu (napr. "7276",
+    viď classify_regular_note()) - viď _zakazka_search_pattern(). Pole
     "Zákazka" vo wizarde je treeitem widget (rovnaký ako "Výber
     dodávateľa"), nie <select> - vyhľadáva sa podľa tohto zobrazeného textu.
+    Ak je None, krok výberu zákazky sa celkom preskočí (dodací list ide
+    priamo na sklad bez priradenia k zákazke - poznámka "sklad"/"servis").
 
     `subcustomer_name` - meno podriadeného zákazníka, podľa ktorého sa
-    určí marža (MARGIN_OVERRIDES, inak DEFAULT_MARGIN_VALUE).
+    určí marža (MARGIN_PERCENT_OVERRIDES, inak DEFAULT_MARGIN_PERCENT) -
+    len ak `margin_percent` nie je zadaný explicitne.
 
     `warehouse_name` - presne podľa zoznamu v poli "Sklad" (napr.
     "Medzisklad") - <select id="warehouse_all"> zabalený v select2
     (rovnaký vzor ako #margins_all), NIE treeitem widget.
 
-    Výnimky (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté):
-    poznámka "servis" na dodacom liste -> tovar ide rovno do skladu
-    "servis" namiesto na zákazku; záporná hodnota dodacieho listu
-    (vratka) -> tovar ide do skladu "vratka".
+    `margin_percent` - ak je zadaný, použije sa priamo (napr.
+    REGULAR_MARGIN_PERCENT pre bežné dodacie listy) namiesto odvodenia
+    z `subcustomer_name`.
+
+    Výnimka (zatiaľ NEIMPLEMENTOVANÉ, riešime neskôr, dohodnuté): záporná
+    hodnota dodacieho listu (vratka/dobropis) - tovar ide do skladu
+    "Vratky" alebo "Reklamacie", bez marže, cez iný vstupný bod wizardu
+    ("Nitech - dobropis"/"Eurovat - dobropis") - čaká sa na doplnenie.
 
     Poznámka: ak IC Office pri nahrávaní zobrazí varovanie, že dodací
     list s týmto číslom už bol nahraný (stalo sa to raz pri ručnom
     teste), táto funkcia to NERIEŠI automaticky - to by sa nemalo stať,
     keďže download_new_delivery_notes() už sleduje spracované súbory.
     """
-    margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
+    if margin_percent is None:
+        margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
     margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
     # Rozbaľovacie menu "Sklady" sa nerozbaľuje spoľahlivo - potvrdené v
@@ -227,14 +267,13 @@ def upload_delivery_note(
     page.locator("#margins_all").select_option(margin_value)
     page.locator("#margins_all").press("Tab")
 
-    page.get_by_label("Zákazka").locator("b").click()
-    # Playwright interne serializuje regex vzor do tvaru `/vzor/` - keďže
-    # zakazka_number obsahuje "/" (napr. "2026/7285"), neescapovaný znak
-    # "/" rozbil parsovanie selektora (potvrdené v praxi -
-    # InvalidSelectorError). "/" preto treba escapovať explicitne, keďže
-    # re.escape() ho nechá bez zmeny (v Pythone nie je regex špeciálny znak).
-    zakazka_pattern = re.escape(zakazka_number).replace("/", r"\/")
-    page.get_by_role("treeitem", name=re.compile(zakazka_pattern)).click()
+    # Ak zakazka_number nie je zadané (poznámka "sklad"/"servis"), krok
+    # výberu zákazky sa celkom preskočí - tovar ide priamo na sklad.
+    if zakazka_number is not None:
+        page.get_by_label("Zákazka").locator("b").click()
+        page.get_by_role(
+            "treeitem", name=re.compile(_zakazka_search_pattern(zakazka_number))
+        ).click()
 
     # id="warehouse_all" má aj obalový <th> tabuľky aj samotný <select> -
     # #warehouse_all preto nie je jednoznačný (potvrdené v praxi - strict

@@ -31,6 +31,13 @@ from playwright.sync_api import BrowserContext, Page
 SUBCUSTOMER_NAME_PATTERN = re.compile(r"Podriadený zákazník:\s*(?P<name>[^(]+?)\s*\(")
 CUSTOM_NOTE_PATTERN = re.compile(r">\s*(?P<custom>.+)", re.DOTALL)
 
+# Poznámka pri bežnom (nie podriadenom) dodacom liste má buď tvar
+# "<číslo zákazky> - <priezvisko>" (napr. "7276 - KMEŤ", "7176 Horvathova"
+# - pomlčka nie je vždy prítomná), alebo doslovný text "sklad"/"servis"
+# (naskladnenie bez priradenia k zákazke) - potvrdené v praxi na reálnych
+# poznámkach z bežnej prevádzky.
+REGULAR_ZAKAZKA_NUMBER_PATTERN = re.compile(r"^\s*(?P<number>\d+)")
+
 
 def parse_subcustomer_note(note_text: str) -> dict:
     """
@@ -45,6 +52,32 @@ def parse_subcustomer_note(note_text: str) -> dict:
         "custom_note": custom_match.group("custom").strip() if custom_match else None,
         "raw_note": note_text.strip(),
     }
+
+
+def classify_regular_note(raw_note: str) -> dict:
+    """
+    Rozparsuje poznámku BEŽNÉHO dodacieho listu (bez podriadeného
+    zákazníka) na spôsob naskladnenia. Vráti {"route", "zakazka_number"}:
+
+    - "zakazka" - poznámka začína číslom zákazky (napr. "7276 - KMEŤ") -
+      zakazka_number obsahuje vyťažené číslo.
+    - "sklad" - doslovná poznámka "sklad" - naskladniť priamo na sklad
+      "Sklad", bez zákazky.
+    - "servis" - doslovná poznámka "servis" - naskladniť priamo na sklad
+      "Servis", bez zákazky.
+    - "unknown" - nerozpoznaný formát, vyžaduje ručnú kontrolu.
+    """
+    normalized = raw_note.strip().lower()
+    if normalized == "sklad":
+        return {"route": "sklad", "zakazka_number": None}
+    if normalized == "servis":
+        return {"route": "servis", "zakazka_number": None}
+
+    number_match = REGULAR_ZAKAZKA_NUMBER_PATTERN.match(raw_note.strip())
+    if number_match:
+        return {"route": "zakazka", "zakazka_number": number_match.group("number")}
+
+    return {"route": "unknown", "zakazka_number": None}
 
 
 def load_processed_ids(store_path: Path) -> set[str]:

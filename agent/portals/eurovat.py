@@ -92,6 +92,22 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
         if document_number in processed:
             continue
 
+        # Záporná hodnota (Cena bez DPH) je viditeľná priamo v zozname
+        # (.document-container .table-row.table-content .table-cell,
+        # 4. bunka) - vratky/dobropisy sa zatiaľ NEspracovávajú automaticky
+        # (dohodnuté, čaká sa na doplnenie), preto treba o zápornej hodnote
+        # vedieť ešte pred vyhodnotením poznámky, aby sa takýto dodací list
+        # omylom nespracoval cez bežnú (kladnú) cestu.
+        price_text = (
+            page.locator(".document-container")
+            .nth(i)
+            .locator(".table-row.table-content .table-cell")
+            .nth(3)
+            .inner_text()
+            .strip()
+        )
+        is_negative_value = price_text.startswith("-")
+
         link.click()
 
         # Po kliknutí sa čaká na skutočné načítanie detailu (môže ísť o
@@ -109,7 +125,7 @@ def download_new_delivery_notes(page: Page, download_dir: str) -> list[dict]:
 
         export_link = page.get_by_role("link", name="Exportovať do CSV")
         file_path = wait_and_save_download(page, export_link, download_dir)
-        downloaded.append({"path": file_path, **note_info})
+        downloaded.append({"path": file_path, "is_negative_value": is_negative_value, **note_info})
 
         mark_processed(PROCESSED_DELIVERY_NOTES_FILE, document_number)
         processed.add(document_number)

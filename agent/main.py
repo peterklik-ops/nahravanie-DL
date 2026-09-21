@@ -21,7 +21,7 @@ import notifier
 import order_sync
 import price_check
 from portals import nitech, eurovat, intercars, ic_office
-from portals.base import new_context
+from portals.base import new_context, classify_regular_note
 
 
 PORTALS = [
@@ -92,34 +92,82 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
             file_path = item["path"]
             subcustomer_name = item.get("subcustomer_name")
             custom_note = item.get("custom_note")
+            raw_note = item.get("raw_note") or ""
             try:
-                if not subcustomer_name:
-                    # Dodacie listy bez poznámky podriadeného zákazníka
-                    # (bežné dodacie listy, "servis", vratka so zápornou
-                    # hodnotou) zatiaľ nemajú automatické určenie zákazky
-                    # ani skladu - dohodnuté, že sa k tomu vrátime neskôr.
-                    #
-                    # Vypísať surovú poznámku - ak by parser subcustomer_name
-                    # nesprávne nevyťažil aj tam, kde poznámka reálne je,
+                if item.get("is_negative_value"):
+                    # Vratka/dobropis (záporná hodnota) - iný vstupný bod
+                    # wizardu (dodávateľ "Nitech - dobropis"/"Eurovat -
+                    # dobropis", sklad "Vratky"/"Reklamacie", bez marže) -
+                    # zatiaľ NEIMPLEMENTOVANÉ, dohodnuté že sa doplní
+                    # neskôr. Táto kontrola musí byť PRVÁ, aby sa taký
+                    # dodací list nikdy neomylom nespracoval cez bežnú
+                    # (kladnú) cestu nižšie.
+                    raise NotImplementedError(
+                        f"{file_path.name} má zápornú hodnotu (vratka/dobropis, "
+                        f"raw_note={raw_note!r}) - automatické spracovanie "
+                        "zatiaľ nie je implementované, vyžaduje ručnú kontrolu."
+                    )
+
+                if subcustomer_name:
+                    zakazka = ic_office.find_zakazka_for_subcustomer(
+                        page, subcustomer_name, custom_note
+                    )
+                    ic_office.upload_delivery_note(
+                        page,
+                        file_path,
+                        supplier_name=SUPPLIER_NAMES[source_name],
+                        column_settings_value=COLUMN_SETTINGS[source_name],
+                        zakazka_number=zakazka["number"],
+                        subcustomer_name=subcustomer_name,
+                    )
+                    print(f"[{source_name}] Nahraný {file_path.name} -> zákazka {zakazka['number']}")
+                    continue
+
+                classification = classify_regular_note(raw_note)
+                route = classification["route"]
+
+                if route == "zakazka":
+                    number = classification["zakazka_number"]
+                    ic_office.upload_delivery_note(
+                        page,
+                        file_path,
+                        supplier_name=SUPPLIER_NAMES[source_name],
+                        column_settings_value=COLUMN_SETTINGS[source_name],
+                        zakazka_number=number,
+                        margin_percent=ic_office.REGULAR_MARGIN_PERCENT,
+                    )
+                    print(f"[{source_name}] Nahraný {file_path.name} -> zákazka č. {number}")
+                elif route == "sklad":
+                    ic_office.upload_delivery_note(
+                        page,
+                        file_path,
+                        supplier_name=SUPPLIER_NAMES[source_name],
+                        column_settings_value=COLUMN_SETTINGS[source_name],
+                        zakazka_number=None,
+                        warehouse_name=ic_office.WAREHOUSE_SKLAD,
+                        margin_percent=ic_office.REGULAR_MARGIN_PERCENT,
+                    )
+                    print(f"[{source_name}] Nahraný {file_path.name} -> priamo na sklad")
+                elif route == "servis":
+                    ic_office.upload_delivery_note(
+                        page,
+                        file_path,
+                        supplier_name=SUPPLIER_NAMES[source_name],
+                        column_settings_value=COLUMN_SETTINGS[source_name],
+                        zakazka_number=None,
+                        warehouse_name=ic_office.WAREHOUSE_SERVIS,
+                        margin_percent=ic_office.REGULAR_MARGIN_PERCENT,
+                    )
+                    print(f"[{source_name}] Nahraný {file_path.name} -> sklad Servis")
+                else:
+                    # Vypísať surovú poznámku - ak by parser nesprávne
+                    # nevyťažil rozpoznateľný formát tam, kde reálne je,
                     # toto je jediný spôsob, ako to spätne odhaliť.
                     raise NotImplementedError(
                         f"{file_path.name} nemá poznámku podriadeného zákazníka "
-                        f"(raw_note={item.get('raw_note')!r}) - automatické "
-                        "priradenie zatiaľ rieši len tento prípad."
+                        f"ani rozpoznateľný formát bežnej poznámky "
+                        f"(raw_note={raw_note!r}) - vyžaduje ručnú kontrolu."
                     )
-
-                zakazka = ic_office.find_zakazka_for_subcustomer(
-                    page, subcustomer_name, custom_note
-                )
-                ic_office.upload_delivery_note(
-                    page,
-                    file_path,
-                    supplier_name=SUPPLIER_NAMES[source_name],
-                    column_settings_value=COLUMN_SETTINGS[source_name],
-                    zakazka_number=zakazka["number"],
-                    subcustomer_name=subcustomer_name,
-                )
-                print(f"[{source_name}] Nahraný {file_path.name} -> zákazka {zakazka['number']}")
             except Exception:
                 print(f"[CHYBA] Zlyhalo nahratie {file_path.name}:")
                 traceback.print_exc()
