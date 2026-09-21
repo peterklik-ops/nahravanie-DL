@@ -220,21 +220,28 @@ def find_zakazka_for_subcustomer(
         found = []
         for i in range(rows.count()):
             row = rows.nth(i)
-            custzak = row.locator(".custzak")
-            if custzak.count() == 0:
-                continue
+            try:
+                custzak = row.locator(".custzak")
+                if custzak.count() == 0:
+                    continue
 
-            div_id = custzak.get_attribute("id") or ""
-            contract_id = div_id.removeprefix("div")
-            if not contract_id:
-                continue
+                div_id = custzak.get_attribute("id", timeout=2000) or ""
+                contract_id = div_id.removeprefix("div")
+                if not contract_id:
+                    continue
 
-            found.append({
-                "contract_id": contract_id,
-                "zakaznik": row.locator("td").nth(3).inner_text().strip(),
-                "number": custzak.locator("span").inner_text().strip(),
-                "description": row.locator("td").nth(7).inner_text().strip(),
-            })
+                found.append({
+                    "contract_id": contract_id,
+                    "zakaznik": row.locator("td").nth(3).inner_text(timeout=2000).strip(),
+                    "number": custzak.locator("span").inner_text(timeout=2000).strip(),
+                    "description": row.locator("td").nth(7).inner_text(timeout=2000).strip(),
+                })
+            except PlaywrightTimeoutError:
+                # Tabuľka sa mohla medzičasom prekresliť (AJAX) a tento
+                # riadok medzitým zanikol/zmenil sa - preskočiť namiesto
+                # pádu celého vyhľadávania (potvrdené v praxi - 30s
+                # timeout na jednom riadku spadol celý beh).
+                continue
         return found
 
     def _wait_for_change_then_stable(before_snapshot: tuple) -> list[dict]:
