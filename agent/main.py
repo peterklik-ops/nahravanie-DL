@@ -183,11 +183,26 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                         warehouse_name=warehouse_name,
                         set_margin=False,
                     )
-                    print(
-                        f"[{source_name}] Nahraný {file_path.name} -> sklad {warehouse_name} "
-                        "(vratka/dobropis) - OVERTE RUČNE v Pohyby tovaru / Dodacie listy, "
-                        "že diely majú mínusový príznak!"
-                    )
+                    negative_items = ic_office.check_vratka_stock(page, file_path)
+                    if negative_items:
+                        details = "; ".join(
+                            f"{item['name']} ({item['code']}): {item['aktualny_stav']}"
+                            for item in negative_items
+                        )
+                        print(
+                            f"[{source_name}] Nahraný {file_path.name} -> sklad {warehouse_name} "
+                            f"(vratka/dobropis) - POZOR, záporný aktuálny stav: {details} "
+                            "- vyžaduje ručné dohľadanie/riešenie v rámci vratiek/reklamácií!"
+                        )
+                        notifier.send_alert(
+                            f"Agent: záporný stav na sklade po vratke/dobropise {file_path.name}",
+                            details,
+                        )
+                    else:
+                        print(
+                            f"[{source_name}] Nahraný {file_path.name} -> sklad {warehouse_name} "
+                            "(vratka/dobropis) - aktuálny stav v poriadku (kladný/žiadny)."
+                        )
                     continue
 
                 if subcustomer_name:

@@ -32,6 +32,11 @@ def login(page: Page) -> None:
 # (potvrdené v praxi opakovane, viď upload_delivery_note()).
 TOVAR_URL = "https://ic-office.sk/warehouse/goods"
 
+# Detail jedného pohybu tovaru (Aktuálny stav po naskladnení) - potvrdené
+# podľa reálneho HTML, ide o samostatnú stránku (obsah <iframe> v modale
+# "Náhľad / editácia" na /warehouse/goods-move), nie treba otvárať modal.
+GOODS_DATA_PREVIEW_URL = "https://ic-office.sk/warehouse/goods-data-prew/{data_id}"
+
 # Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
 # aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
 WAREHOUSE_MEDZISKLAD = "Medzisklad"
@@ -643,6 +648,70 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     status_frame = page.locator("#stateChange iframe").content_frame
     status_frame.get_by_text("Pracuje sa").click()
     status_frame.get_by_role("button", name="Zmeniť stav").click()
+
+
+def check_vratka_stock(page: Page, file_path: Path) -> list[dict]:
+    """
+    Po nahratí vratky/dobropisu skontroluje v "Pohyby tovaru / Dodacie
+    listy", či niektorý naskladnený diel nemá záporný "Aktuálny stav" -
+    to znamená chybu vyžadujúcu ručné dohľadanie/riešenie v rámci
+    vratiek/reklamácií (potvrdené v praxi - kladné číslo alebo prázdna
+    hodnota je v poriadku, záporné číslo je chyba).
+
+    Riadok v zozname pohybov sa nájde podľa textu "Sklad: Import DL -
+    {meno súboru bez prípony}" (potvrdené v praxi, že presne to tam je,
+    napr. "Sklad: Import DL - dodaci-list-dl26096379" pre súbor
+    "dodaci-list-dl26096379.csv"). Kontrola beží hneď po uploade, takže
+    záznam je vždy na 1. strane (najnovšie hore, zoznam je zoradený
+    zostupne) - vyhľadávacie pole netreba.
+
+    Detail s "Aktuálny stav" je na samostatnej stránke
+    (GOODS_DATA_PREVIEW_URL podľa data-id z odkazu "Náhľad / editácia") -
+    ide sa tam priamo, bez otvárania modalu/iframe.
+
+    Vráti zoznam položiek so záporným stavom ({"name", "code",
+    "aktualny_stav"}) - prázdny zoznam, ak je všetko v poriadku ALEBO ak
+    sa záznam nepodarilo nájsť (volajúci by mal v oboch prípadoch aj tak
+    vypísať "overte ručne", keďže táto funkcia je len doplnková kontrola).
+    """
+    page.get_by_role("link", name="Pohyby tovaru / Dodacie listy").click()
+
+    row_label = f"Sklad: Import DL - {file_path.stem}"
+    row = page.locator("#database_warehouse tbody tr", has_text=row_label).first
+    try:
+        row.wait_for(state="visible", timeout=8000)
+    except PlaywrightTimeoutError:
+        return []
+
+    data_id = row.locator("a.mmore").get_attribute("data-id")
+    if not data_id:
+        return []
+
+    page.goto(GOODS_DATA_PREVIEW_URL.format(data_id=data_id))
+
+    # Druhá tabuľka na stránke (# / Názov / Kód / Počet / Cena bez DPH /
+    # Cena s DPH / Sklad / Aktuálny stav) nemá <thead>/<tbody> - hlavička
+    # je prvý <tr> priamo v <table>, dátové riadky nasledujú (potvrdené
+    # podľa reálneho HTML) - hlavičku preto preskočíme podľa indexu.
+    rows = page.locator("table.table-hover tr")
+    negative_items = []
+    for i in range(1, rows.count()):
+        cells = rows.nth(i).locator("td")
+        if cells.count() < 8:
+            continue
+        stav_text = cells.nth(7).inner_text().strip()
+        try:
+            aktualny_stav = float(stav_text.replace(",", "."))
+        except ValueError:
+            continue
+        if aktualny_stav < 0:
+            negative_items.append({
+                "name": cells.nth(1).inner_text().strip(),
+                "code": cells.nth(2).inner_text().strip(),
+                "aktualny_stav": aktualny_stav,
+            })
+
+    return negative_items
 
 
 def get_current_sale_price(page: Page, sku: str) -> float:
