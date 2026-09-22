@@ -27,6 +27,11 @@ def login(page: Page) -> None:
     page.get_by_role("button", name="Prihlásiť").click()
 
 
+# URL stránky "Tovar" (Sklady -> Tovar) - priama navigácia namiesto
+# klikania cez rozbaľovacie menu, ktoré sa ukázalo ako nespoľahlivé
+# (potvrdené v praxi opakovane, viď upload_delivery_note()).
+TOVAR_URL = "https://ic-office.sk/warehouse/goods"
+
 # Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
 # aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
 WAREHOUSE_MEDZISKLAD = "Medzisklad"
@@ -221,29 +226,12 @@ def upload_delivery_note(
             margin_percent = MARGIN_PERCENT_OVERRIDES.get(subcustomer_name, DEFAULT_MARGIN_PERCENT)
         margin_value = MARGIN_OPTION_VALUES[margin_percent]
 
-    # Rozbaľovacie menu "Sklady" sa nerozbaľuje spoľahlivo - potvrdené v
-    # praxi opakovane (niekedy stačí hover+klik, inokedy nie, bez
-    # zjavného vzoru). Preto sa skúša niekoľkokrát za sebou, kým sa
-    # "Tovar" reálne nezobrazí, namiesto jedného pokusu.
-    # name="Tovar" bez exact=True sa zhodovalo aj s inými odkazmi na
-    # stránke obsahujúcimi podreťazec "tovar" (napr. "Pridať tovar",
-    # "Prijať viac tovaru", "Všetok tovar") - potvrdené v praxi (strict
-    # mode violation, až 7 zhôd). Tieto ďalšie odkazy neboli viditeľné pri
-    # prvom dodacom liste v behu (čistý štart), ale mohli sa objaviť pri
-    # ďalších položkách v tom istom behu podľa toho, kde presne predošlý
-    # upload skončil.
-    sklady_link = page.locator("a").filter(has_text="Sklady").first
-    tovar_link = page.get_by_role("link", name="Tovar", exact=True)
-    for _ in range(5):
-        sklady_link.hover()
-        sklady_link.click()
-        try:
-            tovar_link.wait_for(state="visible", timeout=4000)
-            break
-        except PlaywrightTimeoutError:
-            continue
-
-    tovar_link.click()
+    # Rozbaľovacie menu "Sklady" -> "Tovar" sa nerozbaľovalo spoľahlivo cez
+    # hover+klik - potvrdené v praxi opakovane, vrátane prípadu, kde
+    # zlyhal aj po 5 pokusoch (celkový 30s timeout, "Tovar" sa vôbec
+    # neobjavilo). Namiesto krehkej interakcie s menu ide agent priamo na
+    # URL stránky "Tovar" (potvrdené v praxi z HTML - href="/warehouse/goods").
+    page.goto(TOVAR_URL)
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
     page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa").click()
