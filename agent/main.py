@@ -83,15 +83,23 @@ def _disambiguate_zakazka_by_order_items(nitech_page, matches: list[dict], file_
     ValueError (rovnaká bezpečnostná zásada ako find_zakazka_for_subcustomer).
     """
     file_codes = read_csv_codes(file_path)
+    print(f"  [debug] kódy z dodacieho listu: {sorted(file_codes)}")
 
     resolved = []
     for match in matches:
-        order_number_match = ORDER_NUMBER_IN_DESCRIPTION_PATTERN.match(match["description"].strip())
+        description = match["description"]
+        order_number_match = ORDER_NUMBER_IN_DESCRIPTION_PATTERN.match(description.strip())
         if not order_number_match:
+            print(f"  [debug] Popis {description!r} - nepodarilo sa vyťažiť číslo objednávky")
             continue
         order_number = f"WO{order_number_match.group('digits')}"
         order_codes = nitech.get_order_item_codes(nitech_page, order_number)
-        if file_codes & order_codes:
+        overlap = file_codes & order_codes
+        print(
+            f"  [debug] {order_number} (Popis {description!r}) -> "
+            f"{len(order_codes)} kódov, zhoda: {sorted(overlap)}"
+        )
+        if overlap:
             resolved.append(match)
 
     if len(resolved) != 1:
