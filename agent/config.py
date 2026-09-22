@@ -54,3 +54,11 @@ HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 
 # Kam poslať upozornenie, ak niečo zlyhá (voliteľné, viď notifier.py)
 ALERT_EMAIL = os.getenv("ALERT_EMAIL")
+
+# --- Notifikácie (e-mail cez Gmail SMTP) ---
+# SMTP_USERNAME = odosielacia gmail adresa, SMTP_PASSWORD = "heslo pre
+# aplikácie" (app password) - bežné heslo do Gmail účtu na SMTP nefunguje.
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
