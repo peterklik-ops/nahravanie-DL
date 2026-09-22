@@ -225,8 +225,15 @@ def upload_delivery_note(
     # praxi opakovane (niekedy stačí hover+klik, inokedy nie, bez
     # zjavného vzoru). Preto sa skúša niekoľkokrát za sebou, kým sa
     # "Tovar" reálne nezobrazí, namiesto jedného pokusu.
+    # name="Tovar" bez exact=True sa zhodovalo aj s inými odkazmi na
+    # stránke obsahujúcimi podreťazec "tovar" (napr. "Pridať tovar",
+    # "Prijať viac tovaru", "Všetok tovar") - potvrdené v praxi (strict
+    # mode violation, až 7 zhôd). Tieto ďalšie odkazy neboli viditeľné pri
+    # prvom dodacom liste v behu (čistý štart), ale mohli sa objaviť pri
+    # ďalších položkách v tom istom behu podľa toho, kde presne predošlý
+    # upload skončil.
     sklady_link = page.locator("a").filter(has_text="Sklady").first
-    tovar_link = page.get_by_role("link", name="Tovar")
+    tovar_link = page.get_by_role("link", name="Tovar", exact=True)
     for _ in range(5):
         sklady_link.hover()
         sklady_link.click()
