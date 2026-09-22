@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Page, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 import config
 
@@ -231,7 +231,20 @@ def upload_delivery_note(
     # zlyhal aj po 5 pokusoch (celkový 30s timeout, "Tovar" sa vôbec
     # neobjavilo). Namiesto krehkej interakcie s menu ide agent priamo na
     # URL stránky "Tovar" (potvrdené v praxi z HTML - href="/warehouse/goods").
-    page.goto(TOVAR_URL)
+    #
+    # page.goto() sem-tam zlyhá s "net::ERR_ABORTED" - potvrdené v praxi
+    # opakovane, vždy keď táto navigácia nasledovala hneď po dokončení
+    # predošlého uploadu v tom istom behu (pravdepodobne race s ešte
+    # prebiehajúcou navigáciou/reloadom z konca predošlej položky). Preto
+    # sa skúša niekoľkokrát za sebou namiesto jedného pokusu.
+    for attempt in range(3):
+        try:
+            page.goto(TOVAR_URL)
+            break
+        except PlaywrightError:
+            if attempt == 2:
+                raise
+            page.wait_for_timeout(1000)
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
     page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa").click()
