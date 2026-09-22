@@ -158,3 +158,30 @@ def list_subcustomer_orders(page: Page) -> list[dict]:
         orders.append({"order_number": order_number, **parse_subcustomer_note(note_text)})
 
     return orders
+
+
+def get_order_item_codes(page: Page, order_number: str) -> set[str]:
+    """
+    Vráti množinu kódov dielov (napr. "819021910") z detailu objednávky
+    podriadeného zákazníka podľa jej čísla (napr. "WO260096459") - podľa
+    reálneho HTML (.document-items .document-item-codes a). Používa sa
+    na rozlíšenie medzi viacerými súbežnými zákazkami toho istého
+    zákazníka porovnaním s kódmi v dodacom liste (viď
+    ic_office.AmbiguousZakazkaError).
+
+    Ak sa objednávka v aktuálne zobrazenom zozname nenájde (napr. je
+    staršia a vyžadovala by stránkovanie/scrollovanie), vráti prázdnu
+    množinu namiesto vyhodenia výnimky - volajúci to bezpečne vyhodnotí
+    ako "nezhoduje sa", nie ako chybu.
+    """
+    page.goto(config.NITECH_SUBCUSTOMER_ORDERS_URL)
+
+    order_link = page.get_by_role("link", name=order_number, exact=True)
+    try:
+        order_link.wait_for(state="visible", timeout=8000)
+    except PlaywrightTimeoutError:
+        return set()
+    order_link.click()
+
+    code_links = page.locator(".document-items .document-item-codes a")
+    return {code_links.nth(i).inner_text().strip() for i in range(code_links.count())}

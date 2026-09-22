@@ -13,6 +13,7 @@ Alebo pozri README.md pre alternatívu cez GitHub Actions (scheduled workflow).
 
 from __future__ import annotations
 
+import re
 import traceback
 from playwright.sync_api import sync_playwright
 
@@ -21,7 +22,7 @@ import notifier
 import order_sync
 import price_check
 from portals import nitech, eurovat, intercars, ic_office
-from portals.base import new_context, classify_regular_note
+from portals.base import new_context, classify_regular_note, read_csv_codes
 
 
 PORTALS = [
@@ -59,6 +60,47 @@ DOBROPIS_COLUMN_SETTINGS = {
 # Poznámka na zápornom dodacom liste, ktorá mení cieľový sklad z "Vratky"
 # na "Reklamacie" (uznaná reklamácia dodávateľovi).
 UZNANA_REKLAMACIA_NOTE = "uznaná reklamácia"
+
+# Číslo objednávky na začiatku Popisu zákazky (viď
+# order_sync.sync_subcustomer_orders() - Popis má tvar "<číslo objednávky>
+# <custom_note>"). Staršie ručne vytvorené zákazky môžu mať číslo bez
+# predpony "WO" (potvrdené v praxi) - na Nitechu majú objednávky vždy
+# tvar "WO<číslo>", preto sa predpona pri hľadaní vždy pridá.
+ORDER_NUMBER_IN_DESCRIPTION_PATTERN = re.compile(r"^(?:WO)?(?P<digits>\d+)")
+
+
+def _disambiguate_zakazka_by_order_items(nitech_page, matches: list[dict], file_path) -> dict:
+    """
+    Skúsi rozlíšiť medzi viacerými súbežnými zákazkami toho istého
+    zákazníka (find_zakazka_for_subcustomer() zlyhalo bez custom_note)
+    porovnaním kódov dielov v dodacom liste s kódmi v pôvodnej objednávke
+    na Nitechu - číslo objednávky sa vyťaží z Popisu každej kandidátskej
+    zákazky (viď ORDER_NUMBER_IN_DESCRIPTION_PATTERN), jej položky sa
+    načítajú cez nitech.get_order_item_codes().
+
+    Vráti zákazku, ktorej objednávka obsahuje aspoň jeden kód zhodný s
+    dodacím listom - iba ak je taká zákazka PRÁVE JEDNA, inak vyhodí
+    ValueError (rovnaká bezpečnostná zásada ako find_zakazka_for_subcustomer).
+    """
+    file_codes = read_csv_codes(file_path)
+
+    resolved = []
+    for match in matches:
+        order_number_match = ORDER_NUMBER_IN_DESCRIPTION_PATTERN.match(match["description"].strip())
+        if not order_number_match:
+            continue
+        order_number = f"WO{order_number_match.group('digits')}"
+        order_codes = nitech.get_order_item_codes(nitech_page, order_number)
+        if file_codes & order_codes:
+            resolved.append(match)
+
+    if len(resolved) != 1:
+        raise ValueError(
+            f"Nepodarilo sa jednoznačne určiť zákazku ani porovnaním kódov "
+            f"dielov s objednávkou na Nitechu (zhôd podľa kódov: {len(resolved)} "
+            f"spomedzi {len(matches)} kandidátov) - vyžaduje ručnú kontrolu."
+        )
+    return resolved[0]
 
 
 def run_delivery_notes_step(browser) -> list[tuple[str, dict]]:
@@ -99,6 +141,11 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
 
     context = new_context(browser, config.DOWNLOAD_DIR)
     page = context.new_page()
+    # Nitech stránka na dodatočné rozlíšenie medzi viacerými súbežnými
+    # zákazkami (viď _disambiguate_zakazka_by_order_items) - vytvorí a
+    # prihlási sa iba raz, len ak sa v tomto behu naozaj použije (netreba
+    # ju otvárať pri každom behu, len keď nastane nejednoznačnosť).
+    nitech_disambig_page = None
     try:
         ic_office.login(page)
         for source_name, item in files:
@@ -136,9 +183,22 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                     continue
 
                 if subcustomer_name:
-                    zakazka = ic_office.find_zakazka_for_subcustomer(
-                        page, subcustomer_name, custom_note
-                    )
+                    try:
+                        zakazka = ic_office.find_zakazka_for_subcustomer(
+                            page, subcustomer_name, custom_note
+                        )
+                    except ic_office.AmbiguousZakazkaError as ambiguous:
+                        if nitech_disambig_page is None:
+                            nitech_disambig_page = context.new_page()
+                            nitech.login(nitech_disambig_page)
+                        zakazka = _disambiguate_zakazka_by_order_items(
+                            nitech_disambig_page, ambiguous.matches, file_path
+                        )
+                        print(
+                            f"[{source_name}] {file_path.name}: rozlíšené medzi "
+                            f"{len(ambiguous.matches)} súbežnými zákazkami podľa "
+                            "kódov dielov v objednávke"
+                        )
                     ic_office.upload_delivery_note(
                         page,
                         file_path,

@@ -19,6 +19,7 @@ TIP na doplnenie selektorov:
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 from pathlib import Path
@@ -78,6 +79,19 @@ def classify_regular_note(raw_note: str) -> dict:
         return {"route": "zakazka", "zakazka_number": number_match.group("number")}
 
     return {"route": "unknown", "zakazka_number": None}
+
+
+def read_csv_codes(file_path: Path, column_name: str = "Code", delimiter: str = ";") -> set[str]:
+    """
+    Načíta hodnoty stĺpca `column_name` (podľa hlavičky) z CSV dodacieho
+    listu - podľa reálneho súboru (stĺpce "Code;Mark;Name;Quantity;...",
+    oddeľovač ";"). Používa sa na porovnanie kódov dielov s objednávkou
+    pri rozlišovaní medzi viacerými súbežnými zákazkami toho istého
+    zákazníka (viď ic_office.AmbiguousZakazkaError).
+    """
+    with file_path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        return {row[column_name].strip() for row in reader if row.get(column_name)}
 
 
 def load_processed_ids(store_path: Path) -> set[str]:

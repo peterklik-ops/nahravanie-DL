@@ -324,6 +324,18 @@ def upload_delivery_note(
 CONTRACT_STATE_PRACUJE_SA = "4"
 
 
+class AmbiguousZakazkaError(ValueError):
+    """
+    find_zakazka_for_subcustomer() nenašla jednoznačnú zhodu, ale má
+    viacero kandidátov (matches) - umožňuje volajúcemu skúsiť ďalšie
+    rozlíšenie (napr. podľa obsahu objednávky), namiesto rovno vzdania sa.
+    """
+
+    def __init__(self, message: str, matches: list[dict]):
+        super().__init__(message)
+        self.matches = matches
+
+
 def find_zakazka_for_subcustomer(
     page: Page, customer_name: str, custom_note: str | None = None
 ) -> dict:
@@ -454,11 +466,17 @@ def find_zakazka_for_subcustomer(
             matches = with_matching_note
 
     if len(matches) != 1:
-        raise ValueError(
+        message = (
             f"Nepodarilo sa jednoznačne určiť zákazku v stave 'Pracuje sa' pre "
             f"zákazníka '{customer_name}' (nájdených zhôd: {len(matches)}, "
             f"custom_note={custom_note!r}) - vyžaduje ručnú kontrolu."
         )
+        if len(matches) > 1:
+            # Viacero súbežných zákaziek bez custom_note na odlíšenie -
+            # volajúci (main.py) môže skúsiť ďalšie rozlíšenie podľa
+            # obsahu objednávky (viď AmbiguousZakazkaError.matches).
+            raise AmbiguousZakazkaError(message, matches=matches)
+        raise ValueError(message)
 
     return matches[0]
 
