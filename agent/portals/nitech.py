@@ -183,5 +183,15 @@ def get_order_item_codes(page: Page, order_number: str) -> set[str]:
         return set()
     order_link.click()
 
+    # Po kliknutí sa detail objednávky načítava cez AJAX/SPA navigáciu -
+    # okamžité počítanie .document-item-codes by mohlo vidieť ešte
+    # prázdnu/starú stránku (potvrdené v praxi - 0 kódov aj pre reálne
+    # existujúcu objednávku s dielmi). Rovnaká trieda race condition ako
+    # inde v tomto module (napr. čítanie poznámky dodacieho listu).
     code_links = page.locator(".document-items .document-item-codes a")
+    try:
+        code_links.first.wait_for(state="visible", timeout=8000)
+    except PlaywrightTimeoutError:
+        return set()
+
     return {code_links.nth(i).inner_text().strip() for i in range(code_links.count())}
