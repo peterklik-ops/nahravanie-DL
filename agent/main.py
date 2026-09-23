@@ -13,8 +13,11 @@ Alebo pozri README.md pre alternatívu cez GitHub Actions (scheduled workflow).
 
 from __future__ import annotations
 
+import io
 import re
+import sys
 import traceback
+from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 import config
@@ -359,24 +362,58 @@ def run_price_check_step(browser) -> None:
         context.close()
 
 
+class _Tee:
+    """Zapisuje súčasne do viacerých streamov (napr. reálny terminál + buffer na súhrn)."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for stream in self.streams:
+            stream.write(data)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
 def main() -> None:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=config.HEADLESS)
-        try:
-            files = run_delivery_notes_step(browser)
-            # Zákazka pre podriadeného zákazníka musí existovať PRED
-            # nahrávaním jeho dodacích listov - ak by sa nová objednávka aj
-            # jej prvý dodací list objavili v tom istom behu, upload by
-            # zákazku nenašiel (potvrdené v praxi - "POTIS s.r.o." malo 0
-            # zhôd, lebo run_upload_step bežal pred vytvorením zákazky).
-            # Keďže sa dodací list po stiahnutí označí ako spracovaný bez
-            # ohľadu na výsledok uploadu, takéto zlyhanie by sa už nikdy
-            # samo neopakovalo - preto poradie krokov musí byť opačné.
-            run_subcustomer_order_sync_step(browser)
-            run_upload_step(browser, files)
-            run_price_check_step(browser)
-        finally:
-            browser.close()
+    # Celý výstup behu (vrátane tracebackov na stderr) sa popri termináli
+    # zbiera aj do bufferu, aby sa na konci mohol poslať JEDEN súhrnný
+    # e-mail za celý beh - namiesto samostatného e-mailu pri každej
+    # jednotlivej chybe/upozornení (dohodnuté).
+    buffer = io.StringIO()
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout = _Tee(original_stdout, buffer)
+    sys.stderr = _Tee(original_stderr, buffer)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=config.HEADLESS)
+            try:
+                files = run_delivery_notes_step(browser)
+                # Zákazka pre podriadeného zákazníka musí existovať PRED
+                # nahrávaním jeho dodacích listov - ak by sa nová objednávka aj
+                # jej prvý dodací list objavili v tom istom behu, upload by
+                # zákazku nenašiel (potvrdené v praxi - "POTIS s.r.o." malo 0
+                # zhôd, lebo run_upload_step bežal pred vytvorením zákazky).
+                # Keďže sa dodací list po stiahnutí označí ako spracovaný bez
+                # ohľadu na výsledok uploadu, takéto zlyhanie by sa už nikdy
+                # samo neopakovalo - preto poradie krokov musí byť opačné.
+                run_subcustomer_order_sync_step(browser)
+                run_upload_step(browser, files)
+                run_price_check_step(browser)
+            finally:
+                browser.close()
+    finally:
+        sys.stdout, sys.stderr = original_stdout, original_stderr
+        summary = buffer.getvalue()
+        error_count = summary.count("[CHYBA]")
+        warning_count = summary.count("POZOR")
+        status = f"{error_count} chýb, {warning_count} upozornení" if (error_count or warning_count) else "OK"
+        notifier.send_summary(
+            f"Agent: súhrn behu {datetime.now():%d.%m.%Y %H:%M} - {status}",
+            summary,
+        )
 
 
 if __name__ == "__main__":
