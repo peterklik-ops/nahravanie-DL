@@ -17,6 +17,7 @@ import io
 import re
 import sys
 import traceback
+import unicodedata
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
@@ -61,8 +62,17 @@ DOBROPIS_COLUMN_SETTINGS = {
 }
 
 # Poznámka na zápornom dodacom liste, ktorá mení cieľový sklad z "Vratky"
-# na "Reklamacie" (uznaná reklamácia dodávateľovi).
-UZNANA_REKLAMACIA_NOTE = "uznaná reklamácia"
+# na "Reklamacie" (uznaná reklamácia dodávateľovi). Reálna poznámka na
+# Nitechu bola bez diakritiky ("uznana reklamacia") - potvrdené v praxi,
+# že porovnanie s diakritikou ("uznaná reklamácia") preto nezachytilo
+# skutočný prípad (DL26097384 skončil nesprávne v sklade Vratky namiesto
+# Reklamacie). Porovnanie sa preto robí bez diakritiky (viď _strip_diacritics()).
+UZNANA_REKLAMACIA_NOTE = "uznana reklamacia"
+
+
+def _strip_diacritics(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 # Číslo objednávky na začiatku Popisu zákazky (viď
 # order_sync.sync_subcustomer_orders() - Popis má tvar "<číslo objednávky>
@@ -175,7 +185,21 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                     # reklamácia". Táto kontrola musí byť PRVÁ, aby sa taký
                     # dodací list nikdy neomylom nespracoval cez bežnú
                     # (kladnú) cestu nižšie.
-                    is_reklamacia = UZNANA_REKLAMACIA_NOTE in raw_note.strip().lower()
+                    normalized_note = _strip_diacritics(raw_note.strip().lower())
+                    is_reklamacia = UZNANA_REKLAMACIA_NOTE in normalized_note
+                    if not is_reklamacia and "reklam" in normalized_note:
+                        # Poznámka spomína "reklamácia", ale nezhoduje sa presne
+                        # s "uznana reklamacia" - môže ísť o preklep (poznámku
+                        # píšu ručne operátori Nitechu) alebo o zamietnutú
+                        # reklamáciu ("neuznaná reklamácia" - dohodnuté, že sa
+                        # NEMÁ tichým odhadom priradiť do skladu Reklamacie,
+                        # radšej vyžaduje ručnú kontrolu).
+                        raise ValueError(
+                            f"{file_path.name}: poznámka obsahuje slovo 'reklamácia', ale "
+                            f"nezhoduje sa presne s '{UZNANA_REKLAMACIA_NOTE}' "
+                            f"(raw_note={raw_note!r}) - vyžaduje ručnú kontrolu (preklep, "
+                            "alebo zamietnutá/iná reklamácia)."
+                        )
                     warehouse_name = "Reklamacie" if is_reklamacia else "Vratky"
                     ic_office.upload_delivery_note(
                         page,
