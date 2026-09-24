@@ -711,6 +711,16 @@ def check_vratka_stock(page: Page, file_path: Path) -> list[dict]:
                 "aktualny_stav": aktualny_stav,
             })
 
+    # GOODS_DATA_PREVIEW_URL je samostatný dokument bez hornej navigácie
+    # (bez menu "Sklady"/"Zákazky" atď.) - ak by sa na tejto stránke
+    # skončilo, ďalšia položka v tom istom behu, ktorá by potrebovala
+    # find_zakazka_for_subcustomer() (klika rovno na "Zákazky" v menu),
+    # by zlyhala na 30s timeoute - a rovnaký stav by pretrvával, kým by
+    # ho náhodou nezresetovala iná položka (potvrdené v praxi - 5
+    # dodacích listov za sebou zlyhalo presne takto). Preto sa stránka
+    # pred návratom vráti do normálneho stavu s navigáciou.
+    page.goto(TOVAR_URL)
+
     return negative_items
 
 
