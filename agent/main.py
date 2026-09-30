@@ -94,11 +94,20 @@ def _disambiguate_zakazka_by_order_items(nitech_page, matches: list[dict], file_
     Vráti zákazku, ktorej objednávka obsahuje aspoň jeden kód zhodný s
     dodacím listom - iba ak je taká zákazka PRÁVE JEDNA, inak vyhodí
     ValueError (rovnaká bezpečnostná zásada ako find_zakazka_for_subcustomer).
+
+    Výnimka: ak práve JEDNA kandidátska objednávka obsahuje VŠETKY kódy z
+    dodacieho listu (úplná zhoda), vráti sa priamo tá - aj keby iné
+    objednávky mali čiastočnú zhodu len vďaka jednému náhodne spoločnému
+    dielu (bežné u viacerých objednávok toho istého zákazníka, potvrdené
+    v praxi - DL26099384/WO260099669 malo úplnú 2/2 zhodu, no ďalšie 2
+    kandidátky mali zhodu len v 1 z týchto 2 kódov a predtým to celé
+    vyhodnotenie zbytočne zablokovali).
     """
     file_codes = read_csv_codes(file_path)
     print(f"  [debug] kódy z dodacieho listu: {sorted(file_codes)}")
 
     resolved = []
+    full_matches = []
     for match in matches:
         description = match["description"]
         order_number_match = ORDER_NUMBER_IN_DESCRIPTION_PATTERN.match(description.strip())
@@ -114,12 +123,18 @@ def _disambiguate_zakazka_by_order_items(nitech_page, matches: list[dict], file_
         )
         if overlap:
             resolved.append(match)
+            if overlap == file_codes:
+                full_matches.append(match)
+
+    if len(full_matches) == 1:
+        return full_matches[0]
 
     if len(resolved) != 1:
         raise ValueError(
             f"Nepodarilo sa jednoznačne určiť zákazku ani porovnaním kódov "
-            f"dielov s objednávkou na Nitechu (zhôd podľa kódov: {len(resolved)} "
-            f"spomedzi {len(matches)} kandidátov) - vyžaduje ručnú kontrolu."
+            f"dielov s objednávkou na Nitechu (úplných zhôd: {len(full_matches)}, "
+            f"aspoň čiastočných zhôd: {len(resolved)} spomedzi {len(matches)} "
+            f"kandidátov) - vyžaduje ručnú kontrolu."
         )
     return resolved[0]
 
