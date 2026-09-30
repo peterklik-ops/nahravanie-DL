@@ -67,11 +67,13 @@ nano .env
 
 crontab -e
 # Nitech aj Eurovat sa kontrolujú v rovnakých časoch (7:30, 10:30, 12:30,
-# 13:30), každý pracovný deň (Po-Pia). main.py beží ako jeden skript pre
+# 13:40), každý pracovný deň (Po-Pia). main.py beží ako jeden skript pre
 # všetky portály naraz - vďaka evidencii spracovaných dokladov je bezpečné
 # spúšťať ho aj vtedy, keď niektorý z portálov nemá nič nové (jednoducho sa
-# nič nestiahne).
-30 7,10,12,13 * * 1-5 cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1
+# nič nestiahne). Posledný beh má inú minútu (:40) než ostatné (:30), preto
+# je na samostatnom riadku.
+30 7,10,12 * * 1-5 cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1
+40 13 * * 1-5 cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1
 ```
 
 ### B) GitHub Actions (scheduled workflow)
@@ -81,16 +83,18 @@ Secrets" (šifrované, nikdy nie sú vidieť v logoch).
 Pozor: GitHub Actions cron beží v UTC, nie v slovenskom čase - a keďže
 Slovensko strieda letný/zimný čas (UTC+2 / UTC+1), jeden pevný UTC cron
 riadok sa časom "posunie" o hodinu. Nižšie je nastavené na letný čas
-(UTC+2 → 5:30, 8:30, 10:30, 11:30 UTC = 7:30, 10:30, 12:30, 13:30 SELČ);
-v zime treba časy posunúť o hodinu neskôr (6:30, 9:30, 11:30, 12:30 UTC),
-alebo použiť VPS/cron s nastavenou lokálnou časovou zónou (variant A).
+(UTC+2 → 5:30, 8:30, 10:30 UTC = 7:30, 10:30, 12:30 SELČ, 11:40 UTC =
+13:40 SELČ); v zime treba časy posunúť o hodinu neskôr (6:30, 9:30, 11:30,
+12:40 UTC), alebo použiť VPS/cron s nastavenou lokálnou časovou zónou
+(variant A).
 
 ```yaml
 # .github/workflows/agent.yml
 on:
   schedule:
-    # letný čas (UTC+2) - 7:30, 10:30, 12:30, 13:30 SELČ, Po-Pia
-    - cron: "30 5,8,10,11 * * 1-5"
+    # letný čas (UTC+2) - 7:30, 10:30, 12:30, 13:40 SELČ, Po-Pia
+    - cron: "30 5,8,10 * * 1-5"
+    - cron: "40 11 * * 1-5"
 jobs:
   run-agent:
     runs-on: ubuntu-latest
