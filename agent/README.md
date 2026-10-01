@@ -72,8 +72,22 @@ crontab -e
 # spúšťať ho aj vtedy, keď niektorý z portálov nemá nič nové (jednoducho sa
 # nič nestiahne). Posledný beh má inú minútu (:40) než ostatné (:30), preto
 # je na samostatnom riadku.
-30 7,10,12 * * 1-5 cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1
-40 13 * * 1-5 cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1
+#
+# flock -n zaručí, že sa dva behy main.py nikdy nespustia súčasne (ak by
+# predchádzajúci beh ešte dobiehal, ďalší sa ticho preskočí namiesto
+# súbežného behu) - súčasný zápis do processed_*.json súborov z dvoch
+# procesov naraz by mohol stratiť záznam (klasický race condition pri
+# zápise, potvrdené v praxi - dokument sa kvôli tomu raz nahral 2x).
+# Rovnaký príkaz s flock treba použiť aj pri ručnom spúšťaní (viď nižšie),
+# aby sa s cronom nikdy neprekryl.
+30 7,10,12 * * 1-5 flock -n /tmp/nahravanie-dl-agent.lock -c 'cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1'
+40 13 * * 1-5 flock -n /tmp/nahravanie-dl-agent.lock -c 'cd /cesta/k/agent && venv/bin/python main.py >> /var/log/agent.log 2>&1'
+```
+
+Ručné spustenie (napr. pri ladení) mimo nastaveného času:
+
+```bash
+flock -n /tmp/nahravanie-dl-agent.lock -c 'cd /cesta/k/agent && venv/bin/python main.py'
 ```
 
 ### B) GitHub Actions (scheduled workflow)
