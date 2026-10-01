@@ -122,16 +122,25 @@ def _zakazka_search_pattern(zakazka_number: str) -> str:
     return r"\/" + re.escape(zakazka_number) + r"(?!\d)"
 
 
-def _click_next_checking_duplicate_warning(page: Page) -> None:
+def _click_checking_duplicate_warning(page: Page, perform_click) -> None:
     """
-    Klikne na tlačidlo "Ďalší" a ošetrí varovanie "Zadané číslo dodacieho
-    listu už v sklade existuje!" - IC Office ho zobrazuje NEKONZISTENTNE:
-    niekedy ako samostatný krok PO úspešnom kliknutí (potvrdené v praxi po
-    kroku nastavenia stĺpcov), inokedy AKO PRIAMY DÔSLEDOK samotného
-    kliknutia - swal-overlay modal sa objaví okamžite a blokuje ten istý
-    klik (potvrdené v praxi po kroku výberu skladu/zákazky - spôsobovalo
-    to 30s nekonečný retry namiesto rozpoznania varovania). Nesmie sa cez
-    toto varovanie prekliknúť ďalej - hrozila by reálna duplicita v sklade.
+    Vykoná `perform_click(timeout)` a ošetrí varovanie "Zadané číslo
+    dodacieho listu už v sklade existuje!" - IC Office ho zobrazuje
+    NEKONZISTENTNE: niekedy ako samostatný krok PO úspešnom kliknutí
+    (potvrdené v praxi po kroku nastavenia stĺpcov), inokedy AKO PRIAMY
+    DÔSLEDOK samotného kliknutia - swal-overlay modal sa objaví okamžite
+    a blokuje ten istý klik (potvrdené v praxi po kroku výberu
+    skladu/zákazky aj po otvorení poľa "Zákazka"/zoznamu "Zákazky" -
+    spôsobovalo to 30s nekonečný retry namiesto rozpoznania varovania).
+
+    DÔLEŽITÉ: tento dialóg musí ošetriť KAŽDÉ kliknutie vo wizarde
+    nahrávania, ktoré by ho mohlo vyvolať - nezatvorený (nekliknutý "OK")
+    swal-overlay zostáva v DOM a blokuje kliknutia pre VŠETKY ďalšie
+    doklady spracovávané v tom istom behu, nielen pre ten jeden, pri
+    ktorom sa pôvodne objavil (potvrdené v praxi - kaskádové zlyhanie
+    viacerých za sebou nasledujúcich dokladov po jednom nezachytenom
+    výskyte). Nesmie sa cez toto varovanie prekliknúť ďalej - hrozila by
+    reálna duplicita v sklade.
     """
     duplicate_warning = page.get_by_text(
         "Zadané číslo dodacieho listu už v sklade existuje"
@@ -146,7 +155,7 @@ def _click_next_checking_duplicate_warning(page: Page) -> None:
         )
 
     try:
-        page.get_by_role("button", name="Ďalší").click(timeout=5000)
+        perform_click(timeout=5000)
     except PlaywrightTimeoutError as click_timeout:
         try:
             duplicate_warning.wait_for(state="visible", timeout=2000)
@@ -161,6 +170,13 @@ def _click_next_checking_duplicate_warning(page: Page) -> None:
         pass
     else:
         _raise_duplicate_error()
+
+
+def _click_next_checking_duplicate_warning(page: Page) -> None:
+    """Klikne na tlačidlo "Ďalší", viď _click_checking_duplicate_warning()."""
+    _click_checking_duplicate_warning(
+        page, lambda timeout: page.get_by_role("button", name="Ďalší").click(timeout=timeout)
+    )
 
 
 def upload_delivery_note(
@@ -321,7 +337,9 @@ def upload_delivery_note(
     # Ak zakazka_number nie je zadané (poznámka "sklad"/"servis"), krok
     # výberu zákazky sa celkom preskočí - tovar ide priamo na sklad.
     if zakazka_number is not None:
-        page.get_by_label("Zákazka").locator("b").click()
+        _click_checking_duplicate_warning(
+            page, lambda timeout: page.get_by_label("Zákazka").locator("b").click(timeout=timeout)
+        )
         page.get_by_role(
             "treeitem", name=re.compile(_zakazka_search_pattern(zakazka_number))
         ).click()
@@ -379,7 +397,9 @@ def find_zakazka_for_subcustomer(
     tichým odhadom priradiť dodací list k cudzej/nesprávnej zákazke
     (reálna chyba v sklade/účtovníctve).
     """
-    page.get_by_role("link", name=" Zákazky").click()
+    _click_checking_duplicate_warning(
+        page, lambda timeout: page.get_by_role("link", name=" Zákazky").click(timeout=timeout)
+    )
     customer_filter = page.locator("#customer")
     state_filter = page.locator("#state")
 
@@ -517,7 +537,9 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
     vybavil ručne (a teda nie sú v PROCESSED_ORDERS_FILE), vytvárali
     duplicitné zákazky - potvrdené v praxi (opakovane sa to stalo).
     """
-    page.get_by_role("link", name=" Zákazky").click()
+    _click_checking_duplicate_warning(
+        page, lambda timeout: page.get_by_role("link", name=" Zákazky").click(timeout=timeout)
+    )
     page.locator("#state").select_option(CONTRACT_STATE_ALL)
 
     description_filter = page.locator("#description")
