@@ -340,9 +340,24 @@ def upload_delivery_note(
         _click_checking_duplicate_warning(
             page, lambda timeout: page.get_by_label("Zákazka").locator("b").click(timeout=timeout)
         )
-        page.get_by_role(
+        zakazka_treeitem = page.get_by_role(
             "treeitem", name=re.compile(_zakazka_search_pattern(zakazka_number))
-        ).click()
+        )
+        try:
+            zakazka_treeitem.click(timeout=8000)
+        except PlaywrightTimeoutError:
+            # Bežná príčina: poznámka na dodacom liste obsahuje nesprávne/
+            # neexistujúce číslo zákazky (napr. preklep pri zadávaní na
+            # zdrojovom portáli - potvrdené v praxi, "2026" namiesto
+            # skutočného čísla) - bez tohto rozlíšenia by Playwright len
+            # 30s čakal/skúšal klik na prvok, ktorý sa nikdy neobjaví, a
+            # vyhodil nejasný TimeoutError.
+            raise ValueError(
+                f"Zákazka č. {zakazka_number} sa v IC Office nenašla (strom "
+                "poľa \"Zákazka\") - pravdepodobne nesprávne/neexistujúce "
+                "číslo zákazky v poznámke na zdrojovom portáli, vyžaduje "
+                "ručnú kontrolu."
+            ) from None
 
     # id="warehouse_all" má aj obalový <th> tabuľky aj samotný <select> -
     # #warehouse_all preto nie je jednoznačný (potvrdené v praxi - strict
