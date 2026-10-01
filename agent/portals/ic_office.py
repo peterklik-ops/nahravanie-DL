@@ -559,14 +559,7 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
 
     description_filter = page.locator("#description")
 
-    def _search(value: str) -> bool:
-        description_filter.fill(value)
-        description_filter.press("Enter")
-        page.wait_for_load_state("networkidle")
-
-        if not value:
-            return False
-
+    def _rows_contain(value: str) -> bool:
         # Neoverovať len prítomnosť nejakého riadku (.count() > 0), ale
         # skutočne prečítať Popis a potvrdiť, že hľadanú hodnotu naozaj
         # obsahuje - inak hrozí, že sa prečíta ešte "starý" výsledok
@@ -582,6 +575,27 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
             if value in popis:
                 return True
         return False
+
+    def _search(value: str) -> bool:
+        description_filter.fill(value)
+        description_filter.press("Enter")
+        page.wait_for_load_state("networkidle")
+
+        if not value:
+            return False
+
+        if _rows_contain(value):
+            return True
+
+        # "networkidle" potvrdzuje len, že dobehli sieťové požiadavky, nie
+        # že sa AJAX odpoveď už aj reálne prekreslila do DOM - na pomalšom
+        # serveri (nižší výkon CPU) sa to raz reálne prejavilo ako
+        # vytvorenie duplicitnej zákazky (WO260100286 - existujúca
+        # zákazka sa pri tejto kontrole nenašla, hoci v IC Office už
+        # bola). Jeden dodatočný pokus po krátkom čakaní znižuje riziko
+        # rovnakého falošného "nenájdené".
+        page.wait_for_timeout(1500)
+        return _rows_contain(value)
 
     # Vyprázdniť filter pred prvým hľadaním - zabráni prelínaniu s
     # výsledkom z predchádzajúceho volania tejto funkcie pre inú
