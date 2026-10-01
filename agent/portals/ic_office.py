@@ -268,8 +268,18 @@ def upload_delivery_note(
             page.wait_for_timeout(1000)
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
-    page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa").click()
-    page.get_by_role("treeitem", name=supplier_name).click()
+    supplier_picker = page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa")
+    supplier_picker.click()
+    try:
+        page.get_by_role("treeitem", name=supplier_name).click(timeout=10000)
+    except PlaywrightTimeoutError:
+        # Strom dodávateľov sa občas nestihne vykresliť do 10s na pomalšom
+        # serveri - ojedinelé, nekaskádové zlyhanie (potvrdené v praxi,
+        # ďalší doklad v tom istom behu prešiel bez problémov). Jeden
+        # pokus znova otvoriť zoznam a kliknúť spravidla stačí - rovnaký
+        # vzor ako retry pri page.goto() vyššie.
+        supplier_picker.click()
+        page.get_by_role("treeitem", name=supplier_name).click(timeout=20000)
     page.locator("#import_export_dl_modal").get_by_text("OK").click()
 
     # Klik na "Vybrať súbor" spúšťa natívny OS dialóg na výber súboru
@@ -346,18 +356,27 @@ def upload_delivery_note(
         try:
             zakazka_treeitem.click(timeout=8000)
         except PlaywrightTimeoutError:
-            # Bežná príčina: poznámka na dodacom liste obsahuje nesprávne/
-            # neexistujúce číslo zákazky (napr. preklep pri zadávaní na
-            # zdrojovom portáli - potvrdené v praxi, "2026" namiesto
-            # skutočného čísla) - bez tohto rozlíšenia by Playwright len
-            # 30s čakal/skúšal klik na prvok, ktorý sa nikdy neobjaví, a
-            # vyhodil nejasný TimeoutError.
-            raise ValueError(
-                f"Zákazka č. {zakazka_number} sa v IC Office nenašla (strom "
-                "poľa \"Zákazka\") - pravdepodobne nesprávne/neexistujúce "
-                "číslo zákazky v poznámke na zdrojovom portáli, vyžaduje "
-                "ručnú kontrolu."
-            ) from None
+            # Pred vyhodnotením "zákazka neexistuje" skúsiť ešte raz znova
+            # otvoriť pole "Zákazka" a kliknúť - strom sa občas nestihne
+            # vykresliť do 8s na pomalšom serveri aj pre REÁLNE existujúcu
+            # zákazku (potvrdené v praxi na rovnakom widgete pri výbere
+            # dodávateľa), čo by inak viedlo k falošnému "neexistuje".
+            try:
+                page.get_by_label("Zákazka").locator("b").click(timeout=5000)
+                zakazka_treeitem.click(timeout=15000)
+            except PlaywrightTimeoutError:
+                # Bežná príčina: poznámka na dodacom liste obsahuje
+                # nesprávne/neexistujúce číslo zákazky (napr. preklep pri
+                # zadávaní na zdrojovom portáli - potvrdené v praxi, "2026"
+                # namiesto skutočného čísla) - bez tohto rozlíšenia by
+                # Playwright len 30s čakal/skúšal klik na prvok, ktorý sa
+                # nikdy neobjaví, a vyhodil nejasný TimeoutError.
+                raise ValueError(
+                    f"Zákazka č. {zakazka_number} sa v IC Office nenašla "
+                    "(strom poľa \"Zákazka\") - pravdepodobne nesprávne/"
+                    "neexistujúce číslo zákazky v poznámke na zdrojovom "
+                    "portáli, vyžaduje ručnú kontrolu."
+                ) from None
 
     # id="warehouse_all" má aj obalový <th> tabuľky aj samotný <select> -
     # #warehouse_all preto nie je jednoznačný (potvrdené v praxi - strict
