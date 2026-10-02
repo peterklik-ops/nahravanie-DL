@@ -596,7 +596,18 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
         return False
 
     def _search(value: str) -> bool:
-        description_filter.fill(value)
+        # .fill() nastaví hodnotu naraz (len jedna "input" udalosť) -
+        # tento filter počúva na "keyup" pri KAŽDOM znaku (potvrdené v
+        # praxi - .fill() filter vôbec nespustil, tabuľka zostala
+        # nefiltrovaná so starými/predvolenými riadkami, čo spôsobilo
+        # skutočné duplicitné zákazky, keď hľadaný záznam nebol medzi
+        # nimi). Preto sa pole vyprázdni aj vyplní skutočnými klávesovými
+        # udalosťami, ako pri reálnom písaní.
+        description_filter.click()
+        description_filter.press("Control+A")
+        description_filter.press("Delete")
+        if value:
+            description_filter.press_sequentially(value)
         description_filter.press("Enter")
         page.wait_for_load_state("networkidle")
 
@@ -651,7 +662,16 @@ def _find_customer_link_by_exact_name(page: Page, name: str, timeout: int = 8000
     candidates = page.locator('a[href^="/customer/default/"]', has_text=name)
 
     def _attempt(attempt_timeout: int):
-        search_box.fill(name)
+        # .fill() nastaví hodnotu naraz (len jedna "input" udalosť) - tento
+        # filter počúva na "keyup" pri KAŽDOM znaku (potvrdené v praxi cez
+        # debug_lu_sy.py - .fill() filter vôbec nespustil, zostala
+        # zobrazená nefiltrovaná predvolená tabuľka 15 iných zákazníkov).
+        # Preto sa pole vyprázdni aj vyplní skutočnými klávesovými
+        # udalosťami, ako pri reálnom písaní.
+        search_box.click()
+        search_box.press("Control+A")
+        search_box.press("Delete")
+        search_box.press_sequentially(name)
         search_box.press("Enter")
 
         # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
