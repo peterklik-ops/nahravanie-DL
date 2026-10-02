@@ -638,35 +638,49 @@ def _find_customer_link_by_exact_name(page: Page, name: str, timeout: int = 8000
     Vyhľadá zákazníka v tabuľke Klienti cez stĺpcový filter "Meno / Firma"
     a počká na presnú zhodu odkazu (s timeoutom). Vráti locator alebo None,
     ak sa v danom čase nenašiel.
+
+    Odkaz na zákazníka má tvar <a href="/customer/default/<id>"><strong>Meno</strong></a>
+    - vyhľadáva sa priamo podľa tohto href vzoru + textového obsahu, NIE
+    cez get_by_role("link", ...) - potvrdené v praxi, že Playwright pre
+    niektorých zákazníkov (napr. "Lu-Sy s.r.o.", vnorený <strong> s
+    inline štýlom) odkaz touto cestou nenašiel, hoci reálne existoval a
+    po kliknutí fungoval (zlá detekcia accessibility role, nie problém s
+    časovaním).
     """
     search_box = page.get_by_placeholder("Meno / Firma")
-    link = page.get_by_role("link", name=name, exact=True).first
+    candidates = page.locator('a[href^="/customer/default/"]', has_text=name)
 
-    def _attempt(attempt_timeout: int) -> bool:
+    def _attempt(attempt_timeout: int):
         search_box.fill(name)
         search_box.press("Enter")
 
         # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
         # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na
-        # viditeľnosť odkazu (s timeoutom), namiesto okamžitej kontroly
+        # viditeľnosť kandidáta (s timeoutom), namiesto okamžitej kontroly
         # počtu.
         try:
-            link.wait_for(state="visible", timeout=attempt_timeout)
-            return True
+            candidates.first.wait_for(state="visible", timeout=attempt_timeout)
         except PlaywrightTimeoutError:
-            return False
+            return None
 
-    if _attempt(timeout):
+        # has_text robí len "obsahuje" zhodu, nie presnú - napr. "Novák" by
+        # sa zhodovalo aj s "Nováková". Preto sa z kandidátov vyberie ten,
+        # ktorého text sa PRESNE zhoduje.
+        for i in range(candidates.count()):
+            candidate = candidates.nth(i)
+            if candidate.inner_text().strip() == name:
+                return candidate
+        return None
+
+    link = _attempt(timeout)
+    if link is not None:
         return link
 
     # Jeden dodatočný pokus pred vyhodnotením "nenašlo sa" - rovnaká
     # AJAX-renderovacia pomalosť na tomto serveri už spôsobila falošné
     # "nenašlo sa" pri stromových widgetoch (dodávateľ, zákazka) aj pri
-    # kontrole existujúcej zákazky; potvrdené v praxi aj tu (zákazník
-    # existoval s presne zhodným menom, no nenašiel sa).
-    if _attempt(timeout):
-        return link
-    return None
+    # kontrole existujúcej zákazky.
+    return _attempt(timeout)
 
 
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
