@@ -640,18 +640,33 @@ def _find_customer_link_by_exact_name(page: Page, name: str, timeout: int = 8000
     ak sa v danom čase nenašiel.
     """
     search_box = page.get_by_placeholder("Meno / Firma")
-    search_box.fill(name)
-    search_box.press("Enter")
-
-    # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
-    # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na viditeľnosť
-    # odkazu (s timeoutom), namiesto okamžitej kontroly počtu.
     link = page.get_by_role("link", name=name, exact=True).first
-    try:
-        link.wait_for(state="visible", timeout=timeout)
+
+    def _attempt(attempt_timeout: int) -> bool:
+        search_box.fill(name)
+        search_box.press("Enter")
+
+        # Filtrovanie tabuľky beží cez AJAX - .count() by mohol vidieť ešte
+        # starý (nezaktualizovaný) stav tabuľky. Preto sa čaká na
+        # viditeľnosť odkazu (s timeoutom), namiesto okamžitej kontroly
+        # počtu.
+        try:
+            link.wait_for(state="visible", timeout=attempt_timeout)
+            return True
+        except PlaywrightTimeoutError:
+            return False
+
+    if _attempt(timeout):
         return link
-    except PlaywrightTimeoutError:
-        return None
+
+    # Jeden dodatočný pokus pred vyhodnotením "nenašlo sa" - rovnaká
+    # AJAX-renderovacia pomalosť na tomto serveri už spôsobila falošné
+    # "nenašlo sa" pri stromových widgetoch (dodávateľ, zákazka) aj pri
+    # kontrole existujúcej zákazky; potvrdené v praxi aj tu (zákazník
+    # existoval s presne zhodným menom, no nenašiel sa).
+    if _attempt(timeout):
+        return link
+    return None
 
 
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
