@@ -289,13 +289,6 @@ def upload_delivery_note(
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
     supplier_picker = page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa")
-
-    # Ak zostal select2 rozbaľovací zoznam (alebo iný prvok) otvorený z
-    # predchádzajúcej akcie, klik naň by ho len zatvoril namiesto otvorenia
-    # - potvrdené v praxi (klik na "Výber dodávateľa" blokovaný otvoreným
-    # vyhľadávacím poľom toho istého select2 prvku). Escape ho bezpečne
-    # zatvorí, ak je otvorený, a je neškodný, ak nie je.
-    page.keyboard.press("Escape")
     supplier_picker.click()
     try:
         page.get_by_role("treeitem", name=supplier_name).click(timeout=10000)
