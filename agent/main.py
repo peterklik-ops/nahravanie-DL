@@ -327,6 +327,11 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                     f"Agent: zlyhalo nahratie dodacieho listu {file_path.name}",
                     traceback.format_exc(),
                 )
+                # Zlyhanie uprostred viackrokového wizardu môže nechať
+                # stránku v zaseknutom stave (otvorený modál/zoznam), ktorý
+                # by inak blokoval spracovanie ĎALŠIEHO dokladu v tomto
+                # behu (potvrdené v praxi) - vrátiť ju do neutrálneho stavu.
+                ic_office.reset_page_state(page)
     finally:
         context.close()
 

@@ -37,6 +37,26 @@ TOVAR_URL = "https://ic-office.sk/warehouse/goods"
 # "Náhľad / editácia" na /warehouse/goods-move), nie treba otvárať modal.
 GOODS_DATA_PREVIEW_URL = "https://ic-office.sk/warehouse/goods-data-prew/{data_id}"
 
+
+def reset_page_state(page: Page) -> None:
+    """
+    Vráti stránku do neutrálneho stavu po zlyhanom nahrávaní dodacieho
+    listu - zavrie prípadný zaseknutý modál/rozbaľovací zoznam (Escape) a
+    presunie na stránku Tovar. Volá sa po zachytení výnimky v
+    run_upload_step(), aby zlyhanie jedného dokladu neovplyvnilo
+    spracovanie ĎALŠIEHO (potvrdené v praxi - zaseknutý modál
+    "import_export_dl_modal" po jednom zlyhanom doklade zablokoval
+    kliknutie pri úplne inom, nasledujúcom doklade). Zlyhanie tejto
+    funkcie sa nesmie prejaviť navonok - je to len "najlepšia snaha",
+    pôvodná chyba sa už zaznamenala a ide sa ďalej.
+    """
+    try:
+        page.keyboard.press("Escape")
+        page.goto(TOVAR_URL)
+    except PlaywrightError:
+        pass
+
+
 # Sklad "medzisklad" - fixná hodnota, rovnaká pre podriadených zákazníkov
 # aj pre dodacie listy s poznámkou konkrétnej zákazky (potvrdené).
 WAREHOUSE_MEDZISKLAD = "Medzisklad"
@@ -269,6 +289,13 @@ def upload_delivery_note(
     page.get_by_role("link", name="Naskladniť z dodacieho listu").click()
 
     supplier_picker = page.locator("#snippet--suppliers").get_by_label("Výber dodávateľa")
+
+    # Ak zostal select2 rozbaľovací zoznam (alebo iný prvok) otvorený z
+    # predchádzajúcej akcie, klik naň by ho len zatvoril namiesto otvorenia
+    # - potvrdené v praxi (klik na "Výber dodávateľa" blokovaný otvoreným
+    # vyhľadávacím poľom toho istého select2 prvku). Escape ho bezpečne
+    # zatvorí, ak je otvorený, a je neškodný, ak nie je.
+    page.keyboard.press("Escape")
     supplier_picker.click()
     try:
         page.get_by_role("treeitem", name=supplier_name).click(timeout=10000)
