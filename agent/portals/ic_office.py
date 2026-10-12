@@ -153,13 +153,19 @@ def _find_select_option_value(page: Page, select_id: str, zakazka_number: str) -
     debug_zakazka_field.py - get_by_label("Zákazka").locator("b") prestalo
     existovať, #contract_all má triedu "select2-hidden-accessible").
 
+    Obalový <th> tabuľky (hlavička stĺpca "Zákazka") má ROVNAKÉ id ako
+    samotný <select> (rovnaký jav ako už zdokumentovaný pri #warehouse_all
+    nižšie) - querySelector('#' + id) by preto trafil <th>, nie <select>
+    (potvrdené v praxi - "select.options is not iterable"), preto sa tu
+    používa selektor so značkou 'select#...'.
+
     Vracia hodnotu atribútu `value` nájdeného <option>, alebo None, ak sa
     nenašla žiadna zhoda.
     """
     pattern = _zakazka_search_pattern(zakazka_number)
     return page.evaluate(
         """({selectId, pattern}) => {
-            const select = document.querySelector('#' + selectId);
+            const select = document.querySelector('select#' + selectId);
             if (!select) return null;
             const re = new RegExp(pattern);
             for (const opt of select.options) {
@@ -403,7 +409,7 @@ def upload_delivery_note(
         # placeholder "Vyberte zákazku".
         try:
             page.wait_for_function(
-                "() => { const s = document.querySelector('#contract_all'); "
+                "() => { const s = document.querySelector('select#contract_all'); "
                 "return !!s && s.options.length > 1; }",
                 timeout=10000,
             )

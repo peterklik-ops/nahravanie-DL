@@ -204,7 +204,7 @@ def main() -> None:
             if value is not None:
                 page.locator("select#contract_all").select_option(value=value)
                 selected_text = page.evaluate(
-                    "() => document.querySelector('#contract_all').selectedOptions[0].textContent"
+                    "() => document.querySelector('select#contract_all').selectedOptions[0].textContent"
                 )
                 print(f"Po select_option, vybraný text: {selected_text!r}")
             else:
