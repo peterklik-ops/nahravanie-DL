@@ -36,6 +36,15 @@ COLUMN_SETTINGS_VALUE = "62"
 def _pick_csv_file() -> Path:
     if len(sys.argv) > 1:
         return Path(sys.argv[1])
+    # Nitech súbory majú názov "dl<číslo>.csv" (potvrdené v chybových
+    # hláškach, napr. "dl26103548.csv") - Eurovat súbory sú len číslo
+    # (napr. "2662265190.csv" alebo "dodaci-list-2662265190.csv"). Keďže
+    # skript ďalej používa SUPPLIER_NAME/COLUMN_SETTINGS_VALUE pre Nitech,
+    # musí vybrať Nitech súbor, inak by mapovanie stĺpcov sedelo na iný
+    # formát CSV a skreslilo by diagnostiku.
+    nitech_candidates = sorted(Path(config.DOWNLOAD_DIR).glob("dl*.csv"))
+    if nitech_candidates:
+        return nitech_candidates[0]
     candidates = sorted(Path(config.DOWNLOAD_DIR).glob("*.csv"))
     if not candidates:
         raise SystemExit(f"Žiadny .csv súbor v {config.DOWNLOAD_DIR} - zadaj cestu ako argument.")
@@ -101,12 +110,21 @@ def main() -> None:
             )
             ic_office._click_next_checking_duplicate_warning(page)
             print("\nPo kroku 'Nastavenie stĺpcov' -> 'Ďalší', URL:", page.url)
+            print("\n--- CELY VIDITELNY TEXT STRANKY (tento krok) ---")
+            print(page.locator("body").inner_text()[:4000])
+            print("--- KONIEC VYPISU TEXTU ---")
 
             # Marža - rovnaký krok ako v upload_delivery_note(), nech je
             # stav stránky čo najbližšie k reálnemu behu agenta.
             if page.locator("#margins_all").count() > 0:
                 page.locator("#margins_all").select_option(index=0)
                 page.locator("#margins_all").press("Tab")
+                print("\nPo nastavení marže, URL:", page.url)
+                print("\n--- CELY VIDITELNY TEXT STRANKY (po marzi) ---")
+                print(page.locator("body").inner_text()[:4000])
+                print("--- KONIEC VYPISU TEXTU ---")
+            else:
+                print("\n#margins_all sa na stránke NENAŠIEL (count=0).")
 
             print("\n--- DIAGNOSTIKA POLA 'Zakazka' ---")
 
