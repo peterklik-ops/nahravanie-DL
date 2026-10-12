@@ -142,6 +142,35 @@ def _zakazka_search_pattern(zakazka_number: str) -> str:
     return r"\/" + re.escape(zakazka_number) + r"(?!\d)"
 
 
+def _find_select_option_value(page: Page, select_id: str, zakazka_number: str) -> str | None:
+    """
+    Nájde <option> v natívnom <select id=select_id> (zabalenom v select2),
+    ktorého text zodpovedá zadanému číslu zákazky (rovnaký vzor ako
+    _zakazka_search_pattern). Od aktualizácie IC Office z 2026-10-10 je
+    pole "Zákazka" vo wizarde nahrávania DL natívny <select id="contract_all">
+    s cca 3000 <option> (jedna pre každú zákazku v stave "Pracuje sa" aj
+    inde) namiesto predošlého treeitem stromu (potvrdené v praxi cez
+    debug_zakazka_field.py - get_by_label("Zákazka").locator("b") prestalo
+    existovať, #contract_all má triedu "select2-hidden-accessible").
+
+    Vracia hodnotu atribútu `value` nájdeného <option>, alebo None, ak sa
+    nenašla žiadna zhoda.
+    """
+    pattern = _zakazka_search_pattern(zakazka_number)
+    return page.evaluate(
+        """({selectId, pattern}) => {
+            const select = document.querySelector('#' + selectId);
+            if (!select) return null;
+            const re = new RegExp(pattern);
+            for (const opt of select.options) {
+                if (re.test(opt.textContent)) return opt.value;
+            }
+            return null;
+        }""",
+        {"selectId": select_id, "pattern": pattern},
+    )
+
+
 def _click_checking_duplicate_warning(page: Page, perform_click) -> None:
     """
     Vykoná `perform_click(timeout)` a ošetrí varovanie "Zadané číslo
@@ -367,36 +396,32 @@ def upload_delivery_note(
     # Ak zakazka_number nie je zadané (poznámka "sklad"/"servis"), krok
     # výberu zákazky sa celkom preskočí - tovar ide priamo na sklad.
     if zakazka_number is not None:
-        _click_checking_duplicate_warning(
-            page, lambda timeout: page.get_by_label("Zákazka").locator("b").click(timeout=timeout)
-        )
-        zakazka_treeitem = page.get_by_role(
-            "treeitem", name=re.compile(_zakazka_search_pattern(zakazka_number))
-        )
+        # #contract_all má ~3000 <option> - na pomalšom serveri sa občas
+        # nestihnú vykresliť/naplniť hneď po predošlom kroku (rovnaký jav
+        # ako pri iných AJAX-plnených prvkoch v tomto module), preto sa
+        # pred hľadaním zhody chvíľu čaká, kým ich bude viac než len
+        # placeholder "Vyberte zákazku".
         try:
-            zakazka_treeitem.click(timeout=8000)
+            page.wait_for_function(
+                "() => { const s = document.querySelector('#contract_all'); "
+                "return !!s && s.options.length > 1; }",
+                timeout=10000,
+            )
         except PlaywrightTimeoutError:
-            # Pred vyhodnotením "zákazka neexistuje" skúsiť ešte raz znova
-            # otvoriť pole "Zákazka" a kliknúť - strom sa občas nestihne
-            # vykresliť do 8s na pomalšom serveri aj pre REÁLNE existujúcu
-            # zákazku (potvrdené v praxi na rovnakom widgete pri výbere
-            # dodávateľa), čo by inak viedlo k falošnému "neexistuje".
-            try:
-                page.get_by_label("Zákazka").locator("b").click(timeout=5000)
-                zakazka_treeitem.click(timeout=15000)
-            except PlaywrightTimeoutError:
-                # Bežná príčina: poznámka na dodacom liste obsahuje
-                # nesprávne/neexistujúce číslo zákazky (napr. preklep pri
-                # zadávaní na zdrojovom portáli - potvrdené v praxi, "2026"
-                # namiesto skutočného čísla) - bez tohto rozlíšenia by
-                # Playwright len 30s čakal/skúšal klik na prvok, ktorý sa
-                # nikdy neobjaví, a vyhodil nejasný TimeoutError.
-                raise ValueError(
-                    f"Zákazka č. {zakazka_number} sa v IC Office nenašla "
-                    "(strom poľa \"Zákazka\") - pravdepodobne nesprávne/"
-                    "neexistujúce číslo zákazky v poznámke na zdrojovom "
-                    "portáli, vyžaduje ručnú kontrolu."
-                ) from None
+            pass
+        contract_value = _find_select_option_value(page, "contract_all", zakazka_number)
+        if contract_value is None:
+            # Bežná príčina: poznámka na dodacom liste obsahuje
+            # nesprávne/neexistujúce číslo zákazky (napr. preklep pri
+            # zadávaní na zdrojovom portáli - potvrdené v praxi, "2026"
+            # namiesto skutočného čísla).
+            raise ValueError(
+                f"Zákazka č. {zakazka_number} sa v IC Office nenašla "
+                '(pole "Zákazka", #contract_all) - pravdepodobne nesprávne/'
+                "neexistujúce číslo zákazky v poznámke na zdrojovom "
+                "portáli, vyžaduje ručnú kontrolu."
+            )
+        page.locator("select#contract_all").select_option(value=contract_value)
 
     # id="warehouse_all" má aj obalový <th> tabuľky aj samotný <select> -
     # #warehouse_all preto nie je jednoznačný (potvrdené v praxi - strict

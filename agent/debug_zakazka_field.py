@@ -192,6 +192,37 @@ def main() -> None:
             for info in selects_info:
                 print(info)
 
+            # Test OPRAVENEJ funkcie priamo (rovnaká ako v produkcii) -
+            # vyberie prvú zákazku, ktorá sa reálne nachádza v zozname
+            # #contract_all (podľa vyššie vypísaného textu), aby bolo
+            # vidieť, či select_option() skutočne funguje na tomto
+            # select2-zabalenom prvku.
+            print("\n--- TEST OPRAVENEJ FUNKCIE _find_select_option_value / select_option ---")
+            test_zakazka_number = "7455"  # existuje v zozname vyššie (2026/7455)
+            value = ic_office._find_select_option_value(page, "contract_all", test_zakazka_number)
+            print(f"_find_select_option_value(page, 'contract_all', {test_zakazka_number!r}) = {value!r}")
+            if value is not None:
+                page.locator("select#contract_all").select_option(value=value)
+                selected_text = page.evaluate(
+                    "() => document.querySelector('#contract_all').selectedOptions[0].textContent"
+                )
+                print(f"Po select_option, vybraný text: {selected_text!r}")
+            else:
+                print("NENAŠLO SA - over vzor/vstup.")
+
+            # Pokracujeme o krok dalej (sklad + 'Dalsi'), aby bolo vidiet
+            # Krok 3/4 - ESTE NEKLIKAME na 'Naskladnit'/'Ano', iba
+            # nahliadame, ci tam nie je dalsia zmena struktury, ktoru by
+            # bolo treba opravit pred nasadenim do ostreho behu.
+            if page.locator("select#warehouse_all").count() > 0 and value is not None:
+                page.locator("select#warehouse_all").select_option(ic_office.WAREHOUSE_OPTION_VALUES[ic_office.WAREHOUSE_MEDZISKLAD])
+                ic_office._click_next_checking_duplicate_warning(page)
+                print("\n--- PO 'Dalsi' (sklad+zakazka), URL:", page.url)
+                print("\n--- CELY VIDITELNY TEXT STRANKY (dalsi krok, max 3000) ---")
+                print(page.locator("body").inner_text()[:3000])
+                print("--- KONIEC VYPISU TEXTU ---")
+                print("\n*** TOTO JE POSLEDNY KROK, KTORY SKRIPT SPRAVI - NEKLIKA 'Naskladnit'/'Ano' ***")
+
             print("\n--- KONIEC DIAGNOSTIKY, zatváram bez uloženia ---")
             context.close()
         finally:
