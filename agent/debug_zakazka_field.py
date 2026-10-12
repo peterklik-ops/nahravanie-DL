@@ -153,6 +153,45 @@ def main() -> None:
                     html = f"<evaluate failed: {exc}>"
                 print(f"\n[text-match {i}] outerHTML (max 800 znakov):\n{html[:800]}")
 
+            # Stránka evidentne prešla kompletným prerobom (nové kroky
+            # 1-4, nové polia "Číslo dodacieho listu"/"Dátum prijatia",
+            # zoznam zákaziek sa teraz vypisuje priamo v texte stránky -
+            # inak než predošlý treeitem strom). Vypísať skutočnú HTML
+            # štruktúru okolo kľúčových textov, aby bolo vidieť, akým
+            # prvkom (<select>? inému widgetu?) sa teraz "Vyberte zákazku"
+            # a "Dodávateľ" renderujú.
+            print("\n--- ID VŠETKÝCH Nette AJAX SNIPPETOV NA STRÁNKE ---")
+            snippet_ids = page.evaluate(
+                "() => Array.from(document.querySelectorAll('[id^=\"snippet-\"]')).map(e => e.id)"
+            )
+            print(snippet_ids)
+
+            find_container_js = """(searchText) => {
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                    if (node.textContent.trim() === searchText) {
+                        let el = node.parentElement;
+                        for (let i = 0; i < 2 && el.parentElement; i++) el = el.parentElement;
+                        return el.outerHTML;
+                    }
+                }
+                return null;
+            }"""
+            for marker in ["Dodávateľ:", "Vyberte zákazku", "Číslo dodacieho listu:", "Dátum prijatia/naskladnenia:"]:
+                html = page.evaluate(find_container_js, marker)
+                print(f"\n--- OKOLIE TEXTU {marker!r} (2 urovne nahor, max 2500 znakov) ---")
+                print((html or "<NENAŠLO SA>")[:2500])
+
+            print("\n--- VŠETKY <select> ELEMENTY NA STRÁNKE (id, name, počet <option>) ---")
+            selects_info = page.evaluate(
+                """() => Array.from(document.querySelectorAll('select')).map(s => ({
+                    id: s.id, name: s.name, class: s.className, option_count: s.options.length
+                }))"""
+            )
+            for info in selects_info:
+                print(info)
+
             print("\n--- KONIEC DIAGNOSTIKY, zatváram bez uloženia ---")
             context.close()
         finally:
