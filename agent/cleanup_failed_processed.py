@@ -1,8 +1,9 @@
 """
-Jednorazový pomocný skript - odstráni zo processed_*.json záznamy pre
-doklady, ktoré VČERA (2026-10-12) zlyhali kvôli piatkovej aktualizácii
-IC Office (pole "Zákazka" vo wizarde, teraz opravené), aby ich agent pri
-najbližšom behu spracoval znova sám namiesto ručného dohrávania.
+Pomocný skript - odstráni zo processed_nitech_delivery_notes.json a
+processed_eurovat_delivery_notes.json záznamy pre doklady, ktoré zlyhali
+pri nahrávaní (napr. kvôli dočasnej chybe/aktualizácii IC Office, už
+opravenej v kóde), aby ich agent pri najbližšom behu spracoval znova sám
+namiesto ručného dohrávania.
 
 Bezpečnostná poistka: v DRY-RUN režime (predvolené) iba VYPÍŠE, ktoré
 záznamy by zmazal - nič nezapíše. Skutočné zmazanie iba s --apply, po
@@ -12,11 +13,15 @@ sklade).
 
 Porovnáva sa podreťazcovo (case-insensitive) oboma smermi, keďže uložený
 "document_number" (text odkazu na portáli) sa nemusí presne zhodovať s
-názvom stiahnutého súboru (napr. "DL26103548" vs "dl26103548.csv").
+názvom stiahnutého súboru (napr. "DL26103548" vs "dl26103548.csv"), a
+prehľadáva sa VŽDY oba súbory (Nitech aj Eurovat) pre každé zadané číslo,
+keďže skript sám nevie, ktorému dodávateľovi doklad patrí.
 
 Použitie:
-    python3 cleanup_failed_processed.py            # len vypíše, nič nezmení
-    python3 cleanup_failed_processed.py --apply     # skutočne zmaže
+    python3 cleanup_failed_processed.py 26105734 2662269144
+        # len vypíše zhody v oboch processed_*.json, nič nezmení
+    python3 cleanup_failed_processed.py 26105734 2662269144 --apply
+        # skutočne zmaže
 """
 
 from __future__ import annotations
@@ -26,24 +31,6 @@ import sys
 from pathlib import Path
 
 import config
-
-NITECH_FAILED = [
-    "26103548",
-    "26103547",
-    "26103546",
-    "26103545",
-    "26103544",
-    "26103543",
-    "26103541",
-    "26103540",
-    "26103539",
-    "26103538",
-    "26103537",
-    "26103536",
-]
-EUROVAT_FAILED = [
-    "2662267630",
-]
 
 NITECH_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_nitech_delivery_notes.json"
 EUROVAT_FILE = Path(config.DOWNLOAD_DIR).parent / "processed_eurovat_delivery_notes.json"
@@ -64,12 +51,12 @@ def _process_file(store_path: Path, failed_numbers: list[str], apply: bool) -> N
                 break
 
     if not to_remove:
-        print("  Žiadna zhoda - nič na zmazanie (skontroluj, či sú čísla správne).")
+        print("  Žiadna zhoda.")
         return
 
     print(f"  Nájdené zhody ({len(to_remove)}):")
     for id_, number in to_remove:
-        print(f"    {id_!r}  (zodpovedá zlyhanému číslu {number!r})")
+        print(f"    {id_!r}  (zodpovedá zadanému číslu {number!r})")
 
     if not apply:
         print("  DRY-RUN - nič sa nezmenilo. Spusti s --apply pre skutočné zmazanie.")
@@ -81,10 +68,20 @@ def _process_file(store_path: Path, failed_numbers: list[str], apply: bool) -> N
 
 
 def main() -> None:
-    apply = "--apply" in sys.argv
+    args = sys.argv[1:]
+    apply = "--apply" in args
+    numbers = [a for a in args if a != "--apply"]
+
+    if not numbers:
+        raise SystemExit(
+            "Zadaj aspoň jedno číslo dokladu, napr.:\n"
+            "  python3 cleanup_failed_processed.py 26105734 2662269144"
+        )
+
     print("Režim:", "APPLY (skutočne mažem)" if apply else "DRY-RUN (len vypisujem)")
-    _process_file(NITECH_FILE, NITECH_FAILED, apply)
-    _process_file(EUROVAT_FILE, EUROVAT_FAILED, apply)
+    print("Hľadané čísla:", numbers)
+    _process_file(NITECH_FILE, numbers, apply)
+    _process_file(EUROVAT_FILE, numbers, apply)
 
 
 if __name__ == "__main__":
