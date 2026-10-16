@@ -234,6 +234,28 @@ def _click_next_checking_duplicate_warning(page: Page) -> None:
     )
 
 
+def _wait_for_loader_hidden(page: Page, timeout: int = 60000) -> None:
+    """
+    Počká, kým zmizne AJAX "Čakajte prosím ..." loader
+    (<div class="loader loader-default is-active">), ktorý po kliknutí
+    "Ďalší" (prechod na Krok 4 - Prehľad a import) občas zostane
+    prekrývať tlačidlo "Naskladniť" dlhšie než 30s - predvolený timeout
+    na klik (potvrdené v praxi - 56 opakovaných pokusov kliknúť počas
+    celých 30s, loader stále "is-active", pravdepodobne pomalší AJAX
+    request na preťaženejšom serveri).
+
+    Ak loader nezmizne ani do `timeout`, funkcia sa jednoducho vráti bez
+    chyby - nasledujúci skutočný klik potom zlyhá rovnako ako predtým
+    (žiadna skrytá logika na "obídenie" zaseknutého stavu).
+    """
+    try:
+        page.locator('div.loader.is-active[data-text="Čakajte prosím ..."]').wait_for(
+            state="hidden", timeout=timeout
+        )
+    except PlaywrightTimeoutError:
+        pass
+
+
 def upload_delivery_note(
     page: Page,
     file_path: Path,
@@ -436,6 +458,7 @@ def upload_delivery_note(
 
     _click_next_checking_duplicate_warning(page)
 
+    _wait_for_loader_hidden(page)
     page.get_by_role("button", name="Naskladniť").click()
     page.locator("#importGoods").get_by_text("Áno").click()
 
