@@ -105,12 +105,11 @@ MARGIN_OPTION_VALUES = {
     100: "5057",
 }
 
-# Marža podľa podriadeného zákazníka: 15 % pre všetkých, okrem výnimiek
-# uvedených tu (Marek Jaszay má 10 %).
-DEFAULT_MARGIN_PERCENT = 15
-MARGIN_PERCENT_OVERRIDES = {
-    "Marek Jaszay": 10,
-}
+# Marža podľa podriadeného zákazníka: jednotne 10 % pre všetkých (od
+# 2026-10-18, predtým 15 % s výnimkou pre Mareka Jaszaya - tá teraz
+# zodpovedá novej jednotnej hodnote, preto už nie je potrebná).
+DEFAULT_MARGIN_PERCENT = 10
+MARGIN_PERCENT_OVERRIDES: dict[str, float] = {}
 
 # Marža pre bežné (nie podriadený zákazník) dodacie listy - dohodnuté,
 # platí jednotne pre všetky tri prípady (zákazka podľa čísla v poznámke,
