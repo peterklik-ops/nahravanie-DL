@@ -366,8 +366,20 @@ def upload_delivery_note(
         # predošlého pokusu s bezpodmienečným Escape pred každým klikom,
         # ktorý raz zavrel celý wizard modal, keďže vtedy select2 vôbec
         # nebol otvorený (potvrdené v praxi, revertnuté v 57fd654).
-        if page.locator("#snippet--suppliers .select2-container--open").count() > 0:
+        #
+        # Predošlá verzia tejto kontroly hľadala ".select2-container--open"
+        # len vnútri "#snippet--suppliers" a nikdy nič nenašla - select2
+        # pripája svoj otvorený zoznam výsledkov mimo pôvodného
+        # kontajnera (typicky priamo k <body>, kvôli z-indexu), takže sa
+        # treba pozrieť na CELÚ stránku. Po Escape sa navyše krátko čaká,
+        # kým zoznam skutočne zmizne z DOM - inak by nasledujúci klik
+        # mohol naraziť na ešte nezaniknutú (animujúcu sa) položku.
+        if page.locator(".select2-container--open").count() > 0:
             page.keyboard.press("Escape")
+            try:
+                page.locator(".select2-container--open").wait_for(state="detached", timeout=3000)
+            except PlaywrightTimeoutError:
+                pass
         supplier_picker.click()
         page.get_by_role("treeitem", name=supplier_name).click(timeout=20000)
     page.locator("#import_export_dl_modal").get_by_text("OK").click()
