@@ -354,6 +354,20 @@ def upload_delivery_note(
         # ďalší doklad v tom istom behu prešiel bez problémov). Jeden
         # pokus znova otvoriť zoznam a kliknúť spravidla stačí - rovnaký
         # vzor ako retry pri page.goto() vyššie.
+        #
+        # DÔLEŽITÉ: v tomto bode je select2 zoznam takmer vždy STÁLE
+        # OTVORENÝ (prvý klik ho otvoril, timeout vyššie znamená, že sa
+        # nestihlo kliknúť na position, nie že sa zoznam zatvoril) -
+        # ďalší klik na supplier_picker preto narazí sám na seba (vlastný
+        # otvorený zoznam prekrýva combobox a blokuje klik donekonečna,
+        # potvrdené v praxi - 56+ opakovaných pokusov). Escape tu zatvára
+        # LEN tento select2 (zachytí ho skôr než modal) - bezpečné, lebo
+        # je podmienené na skutočne otvorený stav, na rozdiel od
+        # predošlého pokusu s bezpodmienečným Escape pred každým klikom,
+        # ktorý raz zavrel celý wizard modal, keďže vtedy select2 vôbec
+        # nebol otvorený (potvrdené v praxi, revertnuté v 57fd654).
+        if page.locator("#snippet--suppliers .select2-container--open").count() > 0:
+            page.keyboard.press("Escape")
         supplier_picker.click()
         page.get_by_role("treeitem", name=supplier_name).click(timeout=20000)
     page.locator("#import_export_dl_modal").get_by_text("OK").click()
