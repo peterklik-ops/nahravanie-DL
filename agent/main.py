@@ -182,9 +182,19 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
     # prihlási sa iba raz, len ak sa v tomto behu naozaj použije (netreba
     # ju otvárať pri každom behu, len keď nastane nejednoznačnosť).
     nitech_disambig_page = None
+    # Server má len 1 OCPU/1GB RAM - jedna stránka bežiaca cez CELÝ beh
+    # (desiatky dokladov) postupne spomaľuje vykresľovanie (potvrdené v
+    # praxi diagnostickým skriptom - ten istý modál sa na čerstvej
+    # stránke otvoril za ~5s, no v rámci dlhšej dávky to raz trvalo
+    # >60s). Každých PAGE_RECYCLE_INTERVAL dokladov sa preto stránka
+    # zavrie a znovu otvorí v tom istom prihlásenom kontexte (cookies
+    # zostávajú, netreba sa znova prihlasovať), aby sa uvoľnila
+    # nahromadená pamäť z predošlých veľkých AJAX snippetov (napr.
+    # #contract_all s ~3000 <option>).
+    PAGE_RECYCLE_INTERVAL = 5
     try:
         ic_office.login(page)
-        for source_name, item in files:
+        for index, (source_name, item) in enumerate(files, start=1):
             file_path = item["path"]
             subcustomer_name = item.get("subcustomer_name")
             custom_note = item.get("custom_note")
@@ -332,6 +342,10 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
                 # by inak blokoval spracovanie ĎALŠIEHO dokladu v tomto
                 # behu (potvrdené v praxi) - vrátiť ju do neutrálneho stavu.
                 ic_office.reset_page_state(page)
+
+            if index % PAGE_RECYCLE_INTERVAL == 0 and index != len(files):
+                page.close()
+                page = context.new_page()
     finally:
         context.close()
 
