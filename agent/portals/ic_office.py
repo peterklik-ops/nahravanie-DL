@@ -380,7 +380,14 @@ def upload_delivery_note(
                 page.locator(".select2-container--open").wait_for(state="detached", timeout=3000)
             except PlaywrightTimeoutError:
                 pass
-        supplier_picker.click()
+        # Tento retry klik raz zlyhal inak než vyššie opísaný prípad
+        # ("element is not visible" celých 30s, nie zablokovaný iným
+        # prvkom) - #snippet--suppliers sa zjavne občas nestihne znova
+        # vykresliť do predvolených 30s na vyťaženejšom serveri
+        # (potvrdené v praxi, ďalšie doklady v tom istom behu prešli bez
+        # problémov). Dlhší timeout namiesto zložitejšej logiky - rovnaký
+        # prístup ako _wait_for_loader_hidden() pri "Naskladniť".
+        supplier_picker.click(timeout=60000)
         page.get_by_role("treeitem", name=supplier_name).click(timeout=20000)
     page.locator("#import_export_dl_modal").get_by_text("OK").click()
 
