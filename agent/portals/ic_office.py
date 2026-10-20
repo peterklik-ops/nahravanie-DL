@@ -874,6 +874,25 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     status_frame.get_by_text("Pracuje sa").click()
     status_frame.get_by_role("button", name="Zmeniť stav").click()
 
+    # Overenie, že sa stav NAOZAJ zmenil - "Zmeniť stav" môže ticho
+    # zlyhať (napr. iframe sa ešte nestihol naplno načítať pri kliku) a
+    # funkcia by inak skončila "úspešne" so zákazkou stále v pôvodnom
+    # stave (potvrdené v praxi - reálny prípad, kde "RAZ-DVA, s.r.o."
+    # mala vytvorenú zákazku, ktorá nikdy neprešla do "Pracuje sa", takže
+    # neskoršie priraďovanie dodacích listov podľa tohto stavu ju medzi
+    # kandidátmi vôbec nenašlo - namiesto jasnej chyby to spôsobilo
+    # nejednoznačnosť pri úplne INOM dodacom liste). Dialóg zmeny stavu
+    # by sa po úspešnej zmene mal zatvoriť - ak nezatvorí, niečo zlyhalo.
+    try:
+        page.locator("#stateChange").wait_for(state="hidden", timeout=5000)
+    except PlaywrightTimeoutError:
+        raise ValueError(
+            f"Zmena stavu na 'Pracuje sa' pre novovytvorenú zákazku (objednávka "
+            f"{order_number}, zákazník {customer_name!r}) pravdepodobne zlyhala - "
+            "dialóg zmeny stavu sa po kliknutí 'Zmeniť stav' nezavrel, vyžaduje "
+            "ručnú kontrolu stavu zákazky v IC Office."
+        ) from None
+
 
 def check_vratka_stock(page: Page, file_path: Path) -> list[dict]:
     """
