@@ -809,6 +809,46 @@ def _find_customer_link_by_exact_name(page: Page, name: str, timeout: int = 8000
     return _attempt(timeout)
 
 
+def _is_order_in_pracuje_sa_list(
+    page: Page, customer_name: str, order_number: str, timeout_ms: int = 8000
+) -> bool:
+    """
+    Over, či sa zákazka s daným číslom (napr. "7212", holé číslo za
+    lomítkom v "2026/7212") reálne nachádza v Evidencii zákaziek vo
+    filtri "Pracuje sa" pre daného zákazníka - rovnaký mechanizmus
+    vyhľadávania (#database_contracts, .custzak), aký používa
+    find_zakazka_for_subcustomer(). Používa sa na overenie, že zmena
+    stavu v create_order_for_subcustomer() naozaj prebehla (viď tam).
+
+    Krátko pollovanie namiesto jedného pokusu - AJAX filtrovanie tejto
+    tabuľky je na tomto serveri nespoľahlivé na pevné čakanie (rovnaký
+    jav ako v find_zakazka_for_subcustomer._wait_for_change_then_stable).
+    """
+    _click_checking_duplicate_warning(
+        page, lambda timeout: page.get_by_role("link", name=" Zákazky").click(timeout=timeout)
+    )
+    page.locator("#state").select_option(CONTRACT_STATE_PRACUJE_SA)
+    page.locator("#customer").fill(customer_name)
+    page.locator("#customer").press("Enter")
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    suffix = f"/{order_number}"
+    while time.monotonic() < deadline:
+        rows = page.locator("#database_contracts tbody tr")
+        for i in range(rows.count()):
+            custzak = rows.nth(i).locator(".custzak")
+            if custzak.count() == 0:
+                continue
+            try:
+                number_text = custzak.locator("span").inner_text(timeout=1000).strip()
+            except PlaywrightTimeoutError:
+                continue
+            if number_text.endswith(suffix):
+                return True
+        page.wait_for_timeout(300)
+    return False
+
+
 def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> None:
     """
     Vyhľadá zákazníka podľa mena, vytvorí zákazku, skopíruje pridelené
@@ -875,14 +915,23 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     status_frame.get_by_role("button", name="Zmeniť stav").click()
 
     # Overenie, že sa stav NAOZAJ zmenil - "Zmeniť stav" môže ticho
-    # zlyhať (napr. iframe sa ešte nestihol naplno načítať pri kliku) a
-    # funkcia by inak skončila "úspešne" so zákazkou stále v pôvodnom
-    # stave (potvrdené v praxi - reálny prípad, kde "RAZ-DVA, s.r.o."
-    # mala vytvorenú zákazku, ktorá nikdy neprešla do "Pracuje sa", takže
-    # neskoršie priraďovanie dodacích listov podľa tohto stavu ju medzi
-    # kandidátmi vôbec nenašlo - namiesto jasnej chyby to spôsobilo
-    # nejednoznačnosť pri úplne INOM dodacom liste). Dialóg zmeny stavu
-    # by sa po úspešnej zmene mal zatvoriť - ak nezatvorí, niečo zlyhalo.
+    # zlyhať a funkcia by inak skončila "úspešne" so zákazkou stále v
+    # pôvodnom stave (potvrdené v praxi OPAKOVANE - "RAZ-DVA, s.r.o." aj
+    # "Marek Jaszay" mali vytvorenú zákazku, ktorá nikdy neprešla do
+    # "Pracuje sa", takže neskoršie priraďovanie dodacích listov podľa
+    # tohto stavu ju medzi kandidátmi vôbec nenašlo - namiesto jasnej
+    # chyby to spôsobilo nejednoznačnosť pri úplne INOM dodacom liste).
+    #
+    # Samotné "dialóg sa zatvoril" NESTAČÍ ako dôkaz úspechu - ak klik na
+    # text "Pracuje sa" netrafil správny prvok (napr. stránka sa ešte
+    # prekresľovala), formulár sa pokojne odošle s PÔVODNÝM stavom a
+    # dialóg sa aj tak normálne zavrie (potvrdené v praxi - presne toto
+    # sa stalo aj po prvom pokuse o opravu, ktorý kontroloval iba
+    # zatvorenie dialógu). Preto sa tu priamo overuje VÝSLEDOK -
+    # rovnakým mechanizmom vyhľadávania (Evidencia zákaziek, filter
+    # "Pracuje sa" + meno zákazníka), aký neskôr naozaj použije
+    # find_zakazka_for_subcustomer() - ak zákazka tam nie je vidieť
+    # TERAZ, nebude ju vidieť ani vtedy.
     try:
         page.locator("#stateChange").wait_for(state="hidden", timeout=5000)
     except PlaywrightTimeoutError:
@@ -892,6 +941,15 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
             "dialóg zmeny stavu sa po kliknutí 'Zmeniť stav' nezavrel, vyžaduje "
             "ručnú kontrolu stavu zákazky v IC Office."
         ) from None
+
+    if not _is_order_in_pracuje_sa_list(page, customer_name, order_number):
+        raise ValueError(
+            f"Zmena stavu na 'Pracuje sa' pre novovytvorenú zákazku (objednávka "
+            f"{order_number}, zákazník {customer_name!r}) zlyhala - dialóg zmeny "
+            "stavu sa síce zavrel, ale zákazka sa v Evidencii zákaziek vo filtri "
+            "'Pracuje sa' pre tohto zákazníka nenašla. Vyžaduje ručnú kontrolu "
+            "stavu zákazky v IC Office."
+        )
 
 
 def check_vratka_stock(page: Page, file_path: Path) -> list[dict]:
