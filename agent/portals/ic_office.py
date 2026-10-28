@@ -195,6 +195,12 @@ def _click_checking_duplicate_warning(page: Page, perform_click) -> None:
     viacerých za sebou nasledujúcich dokladov po jednom nezachytenom
     výskyte). Nesmie sa cez toto varovanie prekliknúť ďalej - hrozila by
     reálna duplicita v sklade.
+
+    Ak prvý pokus (5s) zlyhá A zároveň sa nenájde duplicitné varovanie,
+    skúsi sa ešte raz s dlhším timeoutom (20s) - potvrdené v praxi
+    OPAKOVANE (dvakrát), že odkaz "Zákazky" aj iné kliknutia cez túto
+    funkciu niekedy zlyhajú len kvôli chvíľkovému spomaleniu servera,
+    nie kvôli skutočne chýbajúcemu prvku.
     """
     duplicate_warning = page.get_by_text(
         "Zadané číslo dodacieho listu už v sklade existuje"
@@ -208,15 +214,20 @@ def _click_checking_duplicate_warning(page: Page, perform_click) -> None:
             "vyžaduje ručnú kontrolu, upload bol bezpečne prerušený."
         )
 
-    try:
-        perform_click(timeout=5000)
-    except PlaywrightTimeoutError as click_timeout:
+    def _attempt(click_timeout_ms: int) -> None:
         try:
-            duplicate_warning.wait_for(state="visible", timeout=2000)
-        except PlaywrightTimeoutError:
-            raise click_timeout
-        _raise_duplicate_error()
-        return
+            perform_click(timeout=click_timeout_ms)
+        except PlaywrightTimeoutError as click_timeout:
+            try:
+                duplicate_warning.wait_for(state="visible", timeout=2000)
+            except PlaywrightTimeoutError:
+                raise click_timeout
+            _raise_duplicate_error()
+
+    try:
+        _attempt(5000)
+    except PlaywrightTimeoutError:
+        _attempt(20000)
 
     try:
         duplicate_warning.wait_for(state="visible", timeout=3000)
