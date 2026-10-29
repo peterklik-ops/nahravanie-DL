@@ -346,6 +346,17 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
             if index % PAGE_RECYCLE_INTERVAL == 0 and index != len(files):
                 page.close()
                 page = context.new_page()
+                # Nová stránka začína na "about:blank" - cookies z
+                # kontextu zostávajú (netreba znova login), ale
+                # find_zakazka_for_subcustomer() rovno klika na odkaz
+                # "Zákazky" v domnienke, že sme UŽ na prihlásenej IC
+                # Office stránke s navigáciou (na rozdiel od
+                # upload_delivery_note(), ktorá si na začiatku sama robí
+                # page.goto()). Bez tejto navigácie by prvá položka po
+                # recyklovaní vždy zlyhala na prázdnej stránke (potvrdené
+                # v praxi - presne to sa stalo dvakrát v tom istom behu,
+                # vždy na prvej položke hneď po recyklovaní).
+                page.goto(ic_office.TOVAR_URL)
     finally:
         context.close()
 
