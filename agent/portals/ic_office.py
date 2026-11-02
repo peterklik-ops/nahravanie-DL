@@ -702,12 +702,21 @@ def order_already_has_zakazka(page: Page, order_number: str) -> bool:
         # z predchádzajúceho hľadania (AJAX odpoveď doraziť neskoro),
         # čo by túto objednávku mylne označilo za už spracovanú a
         # zákazka by sa vôbec nevytvorila (potvrdené v praxi).
+        # Riadok mohol medzičasom zaniknúť/zmeniť sa (AJAX prekreslenie
+        # tabuľky) skôr, než sa stihne prečítať - bez timeoutu+try/except
+        # by to spadlo na predvolenom 30s timeout .inner_text() (potvrdené
+        # v praxi, rovnaký jav ako už vyriešený vo
+        # find_zakazka_for_subcustomer._read_rows() - sem sa to vtedy
+        # neprenieslo).
         rows = page.locator("#database_contracts tbody tr")
         for i in range(rows.count()):
             row = rows.nth(i)
-            if row.locator(".custzak").count() == 0:
+            try:
+                if row.locator(".custzak").count() == 0:
+                    continue
+                popis = row.locator("td").nth(7).inner_text(timeout=2000).strip()
+            except PlaywrightTimeoutError:
                 continue
-            popis = row.locator("td").nth(7).inner_text().strip()
             if value in popis:
                 return True
         return False
