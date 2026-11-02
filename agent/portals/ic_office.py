@@ -902,7 +902,7 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
     # "* Zakázkový list č.:" je textové pole s automaticky predvyplnenou
     # hodnotou v tvare "rok/číslo" (napr. "2026/7202") - do "Názov zákazky"
     # sa zapisuje len časť za lomítkom.
-    order_sheet_value = page.get_by_role("textbox", name="* Zakázkový list č.:").input_value()
+    order_sheet_value = page.get_by_role("textbox", name="* Zakázkový list č.:").input_value().strip()
     match = re.search(r"/(\d+)\s*$", order_sheet_value)
     if not match:
         raise ValueError(
@@ -916,8 +916,16 @@ def create_order_for_subcustomer(page: Page, customer_name: str, note: str) -> N
 
     # Otvorenie novovytvorenej zákazky - v zozname ju nájdeme podľa
     # prideleného čísla (zobrazuje sa v texte "2026/<číslo> - <číslo> -
-    # Dátum: ...").
-    page.get_by_text(re.compile(re.escape(order_number))).first.click()
+    # Dátum: ..."). Hľadá sa podľa CELEJ hodnoty "2026/<číslo>"
+    # (order_sheet_value), nie len podľa holého čísla (order_number) -
+    # holé číslo bez kontextu je len podreťazcová zhoda BEZ kotvenia a
+    # mohlo by sa zhodovať aj s iným, nesúvisiacim záznamom na stránke
+    # (napr. iná zákazka, ktorej číslo holé číslo len OBSAHUJE ako
+    # podreťazec - potvrdené podozrenie v praxi: zákazka pre Jozefa
+    # Šamka sa vytvorila, no zmena stavu sa zjavne neprejavila na nej,
+    # čo nasvedčuje otvoreniu INEJ zákazky). Celý tvar "2026/7700" je
+    # prakticky nemožné zameniť s čímkoľvek iným.
+    page.get_by_text(re.compile(re.escape(order_sheet_value))).first.click()
 
     # Nastavenie stavu "pracuje sa"
     page.get_by_text("Stav", exact=True).click()
