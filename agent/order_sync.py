@@ -83,6 +83,16 @@ def sync_subcustomer_orders(nitech_page: Page, ic_office_page: Page) -> dict:
             # zákazník) nesmie zablokovať spracovanie ostatných - skúsime
             # ju znova pri ďalšom behu (nezaznamenávame ju ako spracovanú).
             failed.append((order, exc))
+            # Zlyhanie mohlo nechať stránku v zaseknutom stave (napr.
+            # dialóg #modalInfo s data-backdrop="static" - nezatvorí sa
+            # ani Escapom, ani klikom mimo), ktorý by inak blokoval
+            # VŠETKY ďalšie objednávky v tomto behu (potvrdené v praxi -
+            # 23.10.-29.10. takto zlyhalo kaskádovo všetkých 7 naraz,
+            # žiadna z nich sa v IC Office vôbec nevytvorila). Rovnaká
+            # obrana ako v run_upload_step() - stará sa iba o to, aby
+            # ĎALŠIA objednávka začínala z neutrálneho stavu, nerieši
+            # samotnú príčinu zlyhania tejto jednej.
+            ic_office.reset_page_state(ic_office_page)
             continue
 
         _mark_order_processed(order["order_number"])
