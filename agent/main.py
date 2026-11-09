@@ -440,6 +440,15 @@ class _Tee:
     def write(self, data):
         for stream in self.streams:
             stream.write(data)
+            # Bez okamžitého flushu môže byť poradie riadkov v reálnom
+            # log súbore (cron presmerováva stdout+stderr do jedného
+            # súboru) iné, než v akom skutočne vznikli - stdout je pri
+            # presmerovaní do súboru blokovo bufferovaný, stderr (kam
+            # idú tracebacky) nie, takže sa tracebacky v súbore objavia
+            # skôr/neskôr než ich vlastný "[CHYBA] ...:" riadok
+            # (potvrdené v praxi - rozbíja to spracovanie logu podľa
+            # blokov, napr. v retry_slow_server_failures.py).
+            stream.flush()
 
     def flush(self):
         for stream in self.streams:
