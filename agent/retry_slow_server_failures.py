@@ -29,7 +29,7 @@ from pathlib import Path
 
 from cleanup_failed_processed import NITECH_FILE, EUROVAT_FILE, _process_file
 
-DEFAULT_LOG_PATH = Path("/var/log/agent.log")
+DEFAULT_LOG_PATH = Path("/home/opc/agent.log")
 
 # Podpis zlyhania musí obsahovať OBOJE, inak ho nepovažujeme za rozpoznaný
 # "server bol pomalý" prípad (bezpečnejšie nerozpoznať a nechať na ručnú
