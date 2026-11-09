@@ -503,7 +503,25 @@ def upload_delivery_note(
 
     _wait_for_loader_hidden(page)
     page.get_by_role("button", name="Naskladniť").click()
-    page.locator("#importGoods").get_by_text("Áno").click()
+    import_goods_dialog = page.locator("#importGoods")
+    import_goods_dialog.get_by_text("Áno").click()
+    # Tento posledný krok (potvrdenie "Áno") doteraz nijako neoveroval
+    # výsledok - ak by klik z nejakého dôvodu nezabral, alebo by AJAX
+    # zápis na pozadí zlyhal, funkcia by sa napriek tomu vrátila bez
+    # chyby a main.py by nahlásil falošný úspech (potvrdené v praxi -
+    # dl26114357 bolo nahlásené ako úspešne nahraté, ale v IC Office
+    # nebolo). Kým sa nezachytí živo, prečo presne k tomu dochádza,
+    # aspoň neškodne zaznamenáme, či dialóg po kliku skutočne zmizol -
+    # NEPADÁ to na chybu, len vypisuje diagnostický riadok, aby sa pri
+    # ďalšom výskyte dalo porovnať (zostal dialóg otvorený, alebo
+    # zmizol a problém je inde).
+    try:
+        import_goods_dialog.wait_for(state="hidden", timeout=10000)
+    except PlaywrightTimeoutError:
+        print(
+            f"[DEBUG] Po kliknutí na 'Áno' zostal dialóg #importGoods viditeľný "
+            f"({file_path.name}) - možný príznak zlyhaného naskladnenia, overiť v IC Office."
+        )
 
 
 # Hodnota <option> v stĺpcovom filtri #state (tabuľka Evidencia zákaziek)
