@@ -30,8 +30,13 @@ from portals.base import new_context, classify_regular_note, read_csv_codes
 
 
 PORTALS = [
-    ("Nitech", nitech),
-    ("Eurovat", eurovat),
+    # Nitech aj Eurovat dočasne vynechané (23.11.2026) - Nitech od 16.11.
+    # blokuje prihlásenie novým anti-bot overením (čaká sa na odpoveď z
+    # ich podpory), Eurovat má od 23.11. aktualizáciu UI, cez ktorú agent
+    # tiež neprejde. Vrátiť späť do zoznamu, až keď bude jedno aj druhé
+    # vyriešené/opravené.
+    # ("Nitech", nitech),
+    # ("Eurovat", eurovat),
     # InterCars zatiaľ vynechaný - portál má Cloudflare bot ochranu na
     # prihlásení, treba najprv overiť, či existuje oficiálne API/EDI
     # rozhranie pre partnerov, než sa doplní automatizácia cez prehliadač.
@@ -363,6 +368,13 @@ def run_upload_step(browser, files: list[tuple[str, dict]]) -> None:
 
 def run_subcustomer_order_sync_step(browser) -> None:
     """Vytvorí zákazky v IC Office pre nové objednávky podriadených zákazníkov v Nitechu."""
+    if not any(name == "Nitech" for name, _ in PORTALS):
+        # Dočasne vynechané spolu s Nitech v PORTALS vyššie - tento krok sa
+        # tiež prihlasuje do Nitechu, takže by narazil na rovnaké anti-bot
+        # overenie.
+        print("Nitech zatiaľ vynechaný - synchronizácia objednávok podriadených zákazníkov sa preskakuje.")
+        return
+
     context = new_context(browser, config.DOWNLOAD_DIR)
     nitech_page = context.new_page()
     ic_page = context.new_page()
